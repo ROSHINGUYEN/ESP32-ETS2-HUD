@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MIU EILIK — ESP32-S3 Commercial Web Flasher & Serial Diagnostic Suite</title>
-  <meta name="description" content="Công cụ thương mại nạp firmware trực tuyến và chẩn đoán phần cứng qua Web Serial API cho Robot MIU EILIK ESP32-S3. Không cần cài đặt phần mềm hay driver bổ sung." />
+  <meta name="description" content="Công cụ thương mại nạp firmware trực tuyến và chẩn đoán phần cứng qua Web Serial API cho Robot MIU EILIK ESP32-S3. Tương thích hoàn hảo Cloudflare Pages." />
   
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -63,7 +63,7 @@
       flex-direction: column;
     }
 
-    /* Ambient industrial technical grid */
+    /* Ambient technical grid */
     body::before {
       content: '';
       position: fixed;
@@ -515,11 +515,75 @@
       gap: 8px;
     }
 
-    /* DIRECT FILE UPLOAD ZONE (REAL FILE SELECTION) */
+    /* DUAL SELECTION METHOD: CLOUD FIRMWARE VS LOCAL UPLOAD */
+    .flash-source-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 800px) {
+      .flash-source-grid { grid-template-columns: 1fr; }
+    }
+
+    .source-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-dim);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .source-card:hover {
+      background: rgba(0, 240, 255, 0.04);
+      border-color: var(--border);
+    }
+    .source-card.active {
+      background: rgba(0, 240, 255, 0.08);
+      border-color: var(--cyan);
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
+    }
+    .source-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .source-desc {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .btn-source-action {
+      background: var(--cyan-dim);
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 9px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      margin-top: auto;
+    }
+    .btn-source-action:hover {
+      background: var(--cyan);
+      color: #040814;
+    }
+
+    /* DIRECT FILE UPLOAD ZONE */
     .upload-zone {
       border: 2px dashed var(--border-bright);
       border-radius: 14px;
-      padding: 32px 20px;
+      padding: 24px 20px;
       text-align: center;
       cursor: pointer;
       transition: all 0.25s;
@@ -528,38 +592,15 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
     }
     .upload-zone:hover, .upload-zone.dragover {
       border-color: var(--cyan);
       background: var(--cyan-dim);
-      box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
     }
-    .upload-icon {
-      font-size: 2.4rem;
-    }
-    .upload-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #fff;
-    }
-    .upload-desc {
-      font-size: 0.76rem;
-      color: var(--text-muted);
-      max-width: 480px;
-    }
-    .btn-browse {
-      background: var(--cyan-dim);
-      border: 1px solid var(--border);
-      color: var(--cyan);
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      font-weight: 700;
-      padding: 7px 16px;
-      border-radius: 6px;
-      margin-top: 6px;
-      pointer-events: none;
-    }
+    .upload-icon { font-size: 2rem; }
+    .upload-title { font-size: 0.9rem; font-weight: 700; color: #fff; }
+    .upload-desc { font-size: 0.74rem; color: var(--text-muted); }
 
     /* Selected File Info Card */
     .file-selected-card {
@@ -844,8 +885,8 @@
           <span>App Offset: <b>0x10000</b> | Factory Offset: <b>0x0000</b></span>
         </div>
         <div class="ticker-item">
-          <span class="tag tag-cyan">INTEGRITY</span>
-          <span>Xác thực tính toàn vẹn phần cứng: <b>Hardware CRC32 & MD5 Hash</b></span>
+          <span class="tag tag-cyan">CLOUDFLARE</span>
+          <span>Sẵn sàng triển khai <b>Cloudflare Pages</b> với thư mục <code>/web</code></span>
         </div>
 
         <!-- Repeated track for infinite marquee -->
@@ -866,8 +907,8 @@
           <span>App Offset: <b>0x10000</b> | Factory Offset: <b>0x0000</b></span>
         </div>
         <div class="ticker-item">
-          <span class="tag tag-cyan">INTEGRITY</span>
-          <span>Xác thực tính toàn vẹn phần cứng: <b>Hardware CRC32 & MD5 Hash</b></span>
+          <span class="tag tag-cyan">CLOUDFLARE</span>
+          <span>Sẵn sàng triển khai <b>Cloudflare Pages</b> với thư mục <code>/web</code></span>
         </div>
       </div>
     </div>
@@ -910,7 +951,7 @@
         
         <!-- Speech Bubble of Robot Eilik -->
         <div class="speech-bubble" id="eilikSpeech">
-          Sẵn sàng nạp firmware! Vui lòng chọn tệp <b>.bin</b> từ máy tính của bạn và cắm cáp USB-C vào bo mạch ESP32-S3 nhé! ⚡
+          Sẵn sàng nạp firmware! Bạn có thể nhấn <b>Tải bản build dự án</b> hoặc chọn tệp <b>.bin</b> từ máy tính để nạp vào ESP32-S3 nhé! ⚡
         </div>
 
         <!-- Vector Animated Eilik Mascot -->
@@ -1016,12 +1057,47 @@
           <div class="panel-header">
             <div class="panel-title">
               <span>📁</span>
-              <span>TẢI LÊN VÀ NẠP TỆP FIRMWARE (.BIN) VÀO ESP32-S3</span>
+              <span>BỘ NẠP FIRMWARE ESP32-S3 QUA WEB SERIAL</span>
             </div>
             <span class="tag tag-cyan">esptool-js Engine</span>
           </div>
 
-          <!-- Real File Upload Zone -->
+          <!-- Dual Source Grid: Server Build vs Local .bin -->
+          <div class="flash-source-grid">
+            
+            <!-- Source 1: Server/Cloudflare Firmware -->
+            <div class="source-card active" id="sourceCloud">
+              <div class="source-title">
+                <span>⚡ BẢN BUILD DỰ ÁN</span>
+                <span class="tag tag-emerald">miu_eilik.bin</span>
+              </div>
+              <div class="source-desc">
+                Tự động lấy file firmware <code>./firmware/miu_eilik.bin</code> từ Cloudflare Pages / Server và nạp thẳng vào ESP32-S3 không cần tìm file.
+              </div>
+              <button class="btn-source-action" id="btnLoadProjectFw">
+                <span>📥</span>
+                <span>TẢI & NẠP BẢN BUILD NÀY</span>
+              </button>
+            </div>
+
+            <!-- Source 2: Local File Upload -->
+            <div class="source-card" id="sourceLocal">
+              <div class="source-title">
+                <span>💻 TỆP .BIN TỪ MÁY TÍNH</span>
+                <span class="tag tag-amber">TỰ CHỌN</span>
+              </div>
+              <div class="source-desc">
+                Chọn file .bin xuất từ Arduino IDE (Ctrl+Alt+S) hoặc PlatformIO để nạp bản tùy biến của riêng bạn.
+              </div>
+              <button class="btn-source-action" id="btnTriggerBrowse">
+                <span>📁</span>
+                <span>CHỌN FILE TỪ MÁY TÍNH</span>
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Real File Upload Zone (Hidden by default until clicked or dragged) -->
           <div class="upload-zone" id="uploadDropzone">
             <input type="file" id="fileBinInput" accept=".bin" style="display: none;" />
             <div class="upload-icon">⚡</div>
@@ -1029,7 +1105,6 @@
             <div class="upload-desc">
               Hỗ trợ tệp nhị phân được biên dịch từ Arduino IDE (.ino.bin), PlatformIO (firmware.bin) hoặc ESP-IDF.
             </div>
-            <div class="btn-browse">DUYỆT FILE .BIN TRÊN MÁY TÍNH</div>
           </div>
 
           <!-- File Selected Info Card -->
@@ -1098,12 +1173,13 @@
 
           <!-- Technical Notes -->
           <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-dim); border-radius: 10px; padding: 14px; font-size: 0.78rem; line-height: 1.6;">
-            <b style="color: var(--cyan);">Lưu ý kỹ thuật khi nạp ESP32-S3:</b>
-            <ul style="margin-left: 20px; margin-top: 6px; color: var(--text-muted);">
-              <li>Địa chỉ <code>0x10000</code> là phân vùng ứng dụng chuẩn (App Partition) khi biên dịch từ Arduino IDE.</li>
-              <li>Nếu nạp file gộp toàn bộ (Bootloader + Partitions + App), hãy đặt Offset là <code>0x0000</code>.</li>
-              <li>Nếu trình duyệt báo <i>Failed to connect</i> hoặc <i>Timed out waiting for packet header</i>: Hãy <b>nhấn giữ nút BOOT</b> trên mạch ESP32-S3, bấm nhả nút <b>RST</b> một lần rồi thả nút BOOT để mạch vào chế độ Download Mode.</li>
-            </ul>
+            <b style="color: var(--cyan);">💡 Hướng dẫn tạo file .bin từ Arduino IDE:</b>
+            <ol style="margin-left: 20px; margin-top: 6px; color: var(--text-muted);">
+              <li>Mở <code>miu_eilik.ino</code> trong Arduino IDE.</li>
+              <li>Chọn đúng bo mạch <b>ESP32S3 Dev Module</b> (Flash: 16MB, PSRAM: OPI).</li>
+              <li>Nhấn menu <b>Sketch</b> &rarr; <b>Export Compiled Binary</b> (hoặc phím tắt <code>Ctrl + Alt + S</code>).</li>
+              <li>File <code>miu_eilik.ino.bin</code> sẽ xuất hiện trong thư mục dự án để bạn nạp ngay!</li>
+            </ol>
           </div>
 
         </div>
@@ -1169,7 +1245,7 @@
       MIU EILIK ESP32-S3 COMMERCIAL HARDWARE SUITE • All Rights Reserved
     </div>
     <div>
-      Web Serial API • Zero-Driver In-Browser Flashing Powered by esptool-js
+      Web Serial API • Cloudflare Pages Compatible • Powered by esptool-js
     </div>
   </footer>
 
@@ -1181,8 +1257,8 @@
     let serialDevice = null;
     let serialReader = null;
     let isConnected = false;
-    let selectedFile = null;
     let selectedUint8Array = null;
+    let selectedFileName = 'firmware.bin';
     let logLineCount = 2;
     let currentLang = 'vi';
 
@@ -1223,7 +1299,7 @@
         connected: 'ĐÃ KẾT NỐI (ONLINE)',
         disconnected: 'CHƯA KẾT NỐI',
         flashBtn: 'BẮT ĐẦU NẠP FIRMWARE (FLASH)',
-        speechIdle: 'Sẵn sàng nạp firmware! Vui lòng chọn tệp <b>.bin</b> từ máy tính của bạn và cắm cáp USB-C vào bo mạch ESP32-S3 nhé! ⚡',
+        speechIdle: 'Sẵn sàng nạp firmware! Bạn có thể nhấn <b>Tải bản build dự án</b> hoặc chọn tệp <b>.bin</b> từ máy tính để nạp vào ESP32-S3 nhé! ⚡',
         speechConnected: 'Đã kết nối cổng COM! Nhấn <b>BẮT ĐẦU NẠP</b> để ghi firmware vào ESP32-S3. 🔌',
         speechFlashing: '⚡ <b>Đang nạp firmware vào ESP32-S3...</b> Vui lòng không rút dây cáp USB!',
         speechDone: '✅ <b>Nạp hoàn tất 100%!</b> Robot MIU Eilik đang khởi động lại.'
@@ -1234,7 +1310,7 @@
         connected: 'CONNECTED (ONLINE)',
         disconnected: 'DISCONNECTED',
         flashBtn: 'START FIRMWARE FLASH',
-        speechIdle: 'Ready to flash firmware! Please select a <b>.bin</b> file from your computer and plug in the USB-C cable! ⚡',
+        speechIdle: 'Ready to flash firmware! Click <b>Load Project Build</b> or choose a <b>.bin</b> file to flash to ESP32-S3! ⚡',
         speechConnected: 'COM Port Connected! Click <b>START FLASH</b> to write firmware to ESP32-S3. 🔌',
         speechFlashing: '⚡ <b>Flashing firmware to ESP32-S3...</b> Please do NOT unplug the USB cable!',
         speechDone: '✅ <b>Flash Complete 100%!</b> MIU Eilik is rebooting.'
@@ -1291,7 +1367,32 @@
       a.click();
     });
 
-    // ── FILE SELECTION & VALIDATION (REAL FILE) ──
+    // ── SOURCE 1: LOAD PROJECT FIRMWARE FROM CLOUDFLARE/SERVER ──
+    document.getElementById('btnLoadProjectFw').addEventListener('click', async () => {
+      addLog('Đang yêu cầu tệp firmware dự án: ./firmware/miu_eilik.bin...', 'info');
+      try {
+        const resp = await fetch('./firmware/miu_eilik.bin');
+        if (!resp.ok) {
+          throw new Error(`Mã phản hồi HTTP: ${resp.status}`);
+        }
+        const buf = await resp.arrayBuffer();
+        selectedUint8Array = new Uint8Array(buf);
+        selectedFileName = 'miu_eilik.bin';
+
+        displaySelectedFile(selectedFileName, selectedUint8Array);
+        addLog(`✓ Đã tải thành công bản build dự án: ${selectedFileName} (${(selectedUint8Array.length/1024).toFixed(1)} KB)`, 'success');
+        eilikSpeech.innerHTML = 'Đã tải xong bản build dự án <b>miu_eilik.bin</b>! Hãy bấm nút <b>BẮT ĐẦU NẠP FIRMWARE</b> bên dưới nhé! ⚡';
+      } catch(err) {
+        addLog(`Chưa tìm thấy tệp ./firmware/miu_eilik.bin trên máy chủ (${err.message}).`, 'warn');
+        alert('Chưa có file firmware đã biên dịch sẵn trên server!\n\nCách xử lý:\n1. Mở file "miu_eilik.ino" trong Arduino IDE.\n2. Bấm Ctrl + Alt + S (Export Compiled Binary).\n3. Copy file .bin vừa tạo vào thư mục "web/firmware/miu_eilik.bin", HOẶC bấm nút "CHỌN FILE TỪ MÁY TÍNH" để chọn trực tiếp file .bin đó!');
+      }
+    });
+
+    // ── SOURCE 2: BROWSE LOCAL FILE ──
+    document.getElementById('btnTriggerBrowse').addEventListener('click', () => {
+      fileBinInput.click();
+    });
+
     uploadDropzone.addEventListener('click', () => fileBinInput.click());
     uploadDropzone.addEventListener('dragover', (e) => { e.preventDefault(); uploadDropzone.classList.add('dragover'); });
     uploadDropzone.addEventListener('dragleave', () => uploadDropzone.classList.remove('dragover'));
@@ -1309,36 +1410,33 @@
         alert('Vui lòng chọn đúng tệp có đuôi .bin (nhị phân firmware)!');
         return;
       }
-      selectedFile = file;
-      fileNameDisp.textContent = file.name;
-      fileSizeDisp.textContent = `Kích thước: ${(file.size / 1024).toFixed(1)} KB (${file.size.toLocaleString()} bytes)`;
-
-      // Read as ArrayBuffer and convert to Uint8Array (required by esptool-js 0.4.x)
       const buffer = await file.arrayBuffer();
       selectedUint8Array = new Uint8Array(buffer);
+      selectedFileName = file.name;
+      displaySelectedFile(selectedFileName, selectedUint8Array);
+      addLog(`Đã tải tệp tùy chỉnh: ${file.name} [${selectedUint8Array.length} bytes]`, 'success');
+    }
 
-      // Verify Magic Byte 0xE9
-      if (selectedUint8Array[0] === 0xE9) {
+    function displaySelectedFile(name, bytes) {
+      fileNameDisp.textContent = name;
+      fileSizeDisp.textContent = `Kích thước: ${(bytes.length / 1024).toFixed(1)} KB (${bytes.length.toLocaleString()} bytes)`;
+      if (bytes[0] === 0xE9) {
         fileHeaderDisp.textContent = 'Header: ✓ ESP32 Magic Byte (0xE9) Hợp lệ';
         fileHeaderDisp.style.color = 'var(--emerald)';
-        addLog(`Đã tải tệp: ${file.name} [${selectedUint8Array.length} bytes] - Header ESP32 hợp lệ.`, 'success');
       } else {
-        fileHeaderDisp.textContent = `Header: 0x${selectedUint8Array[0].toString(16).toUpperCase()} (Khối dữ liệu thô)`;
+        fileHeaderDisp.textContent = `Header: 0x${bytes[0].toString(16).toUpperCase()}`;
         fileHeaderDisp.style.color = 'var(--amber)';
-        addLog(`Đã tải tệp: ${file.name} [${selectedUint8Array.length} bytes]`, 'info');
       }
-
       uploadDropzone.style.display = 'none';
       fileSelectedCard.classList.add('active');
     }
 
     btnRemoveFile.addEventListener('click', () => {
-      selectedFile = null;
       selectedUint8Array = null;
       fileBinInput.value = '';
       fileSelectedCard.classList.remove('active');
       uploadDropzone.style.display = 'flex';
-      addLog('Đã hủy chọn tệp.', 'info');
+      addLog('Đã hủy chọn tệp firmware.', 'info');
     });
 
     // ── WEB SERIAL MONITOR CONNECTION ──
@@ -1475,16 +1573,16 @@
 
     btnFlash.addEventListener('click', async () => {
       if (!selectedUint8Array || selectedUint8Array.length === 0) {
-        alert('Vui lòng chọn tệp firmware .bin hợp lệ từ máy tính trước khi nạp!');
+        alert('Vui lòng chọn tệp firmware .bin hợp lệ (từ máy tính hoặc bấm "Tải & nạp bản build này") trước khi nạp!');
         return;
       }
 
       if (!('serial' in navigator)) {
-        alert('Trình duyệt chưa hỗ trợ Web Serial API! Dùng Chrome / Edge trên máy tính.');
+        alert('Trình duyệt chưa hỗ trợ Web Serial API! Vui lòng dùng Chrome hoặc Edge trên máy tính.');
         return;
       }
 
-      // If serial port was not yet requested, request it now!
+      // If serial port was not yet requested, request it now
       if (!serialDevice) {
         try {
           addLog('Vui lòng chọn cổng COM của ESP32-S3 trong cửa sổ hiện lên...', 'info');
@@ -1542,7 +1640,7 @@
 
         flashStatusText.textContent = 'Đang ghi flash...';
 
-        // fileArray MUST pass Uint8Array in esptool-js 0.4.x!
+        // Pass Uint8Array directly to writeFlash
         await esploader.writeFlash({
           fileArray: [
             { data: selectedUint8Array, address: offset }
