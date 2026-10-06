@@ -14,31 +14,20 @@ Phiên bản **v4.0.0-clean** — Tối ưu hóa toàn diện, loại bỏ toàn
 
 ```
 MIU_EILIK_ESP32-S3/
-├── firmware/                     # Toàn bộ code ESP32-S3
-│   ├── miu_eilik.ino             # Firmware chính (~600 dòng, đã loại bỏ audio)
-│   ├── platformio.ini            # Cấu hình PlatformIO
-│   ├── partitions.csv            # Bảng phân vùng: app0/app1/littlefs
-│   ├── FluxGarage_RoboEyes.h     # Thư viện mắt OLED
-│   ├── ESP_I2S.h                 # (giữ lại tương thích, không dùng trong bản này)
-│   ├── i2s_lines.txt             # Ghi chú I2S cũ
-│   └── data/                     # LittleFS (web UI) - upload bằng `pio run --target uploadfs`
-│       ├── index.html            # Trang chính (SVG robot + 2 joystick)
-│       ├── style.css             # Glassmorphism dark theme
-│       └── app.js                # Joystick control + AI panel + OTA
-├── pc_tools/                     # Công cụ PC (giữ nguyên, tương thích)
-│   ├── miu_web_flasher.html      # Web Flasher (esptool-js)
-│   ├── web_bridge.html           # Bridge Serial<->Web
-│   ├── eilik_bridge.py           # CLI tool
-│   ├── build_web.py
-│   ├── generate_web_ui.py
-│   └── requirements.txt
-├── web/                          # Tài nguyên tĩnh cho hosting ngoài (CDN/landing)
-│   ├── index.html                # Landing page
-│   ├── _headers
-│   ├── README_DEPLOY.md
-│   ├── assets/
-│   └── firmware/                 # Bin backup
-├── README.md                     # File này
+├── miu_eilik/                     # Firmware robot full chức năng chuẩn Arduino IDE
+│   ├── miu_eilik.ino             # Sketch chính (18 Sections kỹ thuật hoàn chỉnh)
+│   ├── FluxGarage_RoboEyes.h     # Thư viện mắt OLED biểu cảm RoboEyes
+│   ├── ESP_I2S.h                 # Driver âm thanh I2S MAX98357A (ESP-IDF v4/v5)
+│   └── partitions.csv            # Bảng phân vùng Flash 16MB
+├── web/                          # Bộ công cụ Web Flasher & Server trực quan
+│   ├── index.html                # Giao diện Web Flasher + Robot OLED giả lập + Serial Console
+│   ├── server.py                 # Local server Python
+│   ├── start_web.bat             # File khởi động nhanh web server
+│   └── assets/                   # Ảnh mẫu tham chiếu
+├── pc_tools/                     # Công cụ hỗ trợ trên máy tính
+│   └── miu_web_flasher.html
+├── start_web.bat                 # Shortcut khởi động web server tại localhost:8080
+├── README.md                     # Tài liệu hướng dẫn dự án
 └── roadmap.md                    # Lộ trình phát triển
 ```
 
