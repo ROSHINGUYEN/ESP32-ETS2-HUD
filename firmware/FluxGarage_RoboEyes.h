@@ -27,9 +27,9 @@
 #define _FLUXGARAGE_ROBOEYES_H
 
 
-// Display colors
-uint8_t BGCOLOR = 0; // background and overlays
-uint8_t MAINCOLOR = 1; // drawings
+// Display colors - PATCH: them 'static' de tranh multiple definition khi include nhieu file
+static uint8_t BGCOLOR = 0; // background and overlays
+static uint8_t MAINCOLOR = 1; // drawings
 
 // For mood type switch
 #define DEFAULT 0
