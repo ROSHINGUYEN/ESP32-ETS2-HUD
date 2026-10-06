@@ -18,11 +18,23 @@ DisplayTask::DisplayTask()
     oledOk(false), mode(DM_CLOCK), streamHasNew(false),
     lastFrameMs(0), fps(0), frameCount(0), fpsTimerMs(0),
     prevBlinker(true), lastPresenceMs(0),
-    _pan(90), _tilt(90), _clients(0), prevClockMin(-1) {
+    _pan(90), _tilt(90), _clients(0),
+    bootMs(0), baseTimeSec(0), tempC(26.8f), humidity(60.0f),
+    lastTrendUpdateMs(0) {
   lastStreamFrameMs = 0;
   memset(streamBuf, 0, sizeof(streamBuf));
   strncpy(_mood, "NEUTRAL", sizeof(_mood) - 1);
   strncpy(_modeStr, "CALM", sizeof(_modeStr) - 1);
+  strncpy(weatherCondition, "SUNNY", sizeof(weatherCondition) - 1);
+
+  // Mẫu độ cao các cột biểu đồ xu hướng giống ảnh 1
+  trendBars[0] = 5;
+  trendBars[1] = 8;
+  trendBars[2] = 11;
+  trendBars[3] = 15;
+  trendBars[4] = 13;
+  trendBars[5] = 9;
+  trendBars[6] = 6;
 }
 
 void DisplayTask::begin() {
@@ -40,9 +52,25 @@ void DisplayTask::begin() {
   pEyes->setMood(DEFAULT);
   bootMs = millis();
   fpsTimerMs = millis();
+  lastTrendUpdateMs = millis();
+
+  // Khởi tạo thời gian khởi điểm từ __DATE__ và __TIME__
+  int bYr = 2026, bMon = 10, bMday = 6, bHr = 12, bMin = 58, bSec = 0;
+  const char* dateStr = __DATE__;
+  const char* timeStr = __TIME__;
+  char mStr[4] = {0};
+  sscanf(dateStr, "%3s %d %d", mStr, &bMday, &bYr);
+  sscanf(timeStr, "%d:%d:%d", &bHr, &bMin, &bSec);
+  const char* months[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+  for (int i = 0; i < 12; i++) {
+    if (strncmp(mStr, months[i], 3) == 0) { bMon = i + 1; break; }
+  }
+  (void)bYr; (void)bMon;
+  baseTimeSec = (unsigned long)bHr * 3600 + (unsigned long)bMin * 60 + bSec + (unsigned long)(bMday * 86400);
+
   oled.clearDisplay();
   oled.display();
-  Serial0.println(F("[OK]   DisplayTask init"));
+  Serial0.println(F("[OK]   DisplayTask init (Weather Dashboard ready)"));
 }
 
 void DisplayTask::setMode(DisplayMode m) {
@@ -58,6 +86,20 @@ void DisplayTask::notifyPresence() {
   lastPresenceMs = millis();
   if (mode != DM_STREAM) {
     setMode(DM_EYES);
+  }
+}
+
+void DisplayTask::setTime(int hr, int min, int sec, int mday, int mon, int yr, int wday) {
+  (void)mon; (void)yr; (void)wday;
+  bootMs = millis();
+  baseTimeSec = (unsigned long)hr * 3600 + (unsigned long)min * 60 + sec + (unsigned long)(mday * 86400);
+}
+
+void DisplayTask::setWeather(float temp, float humi, const char* condition) {
+  tempC = temp;
+  humidity = humi;
+  if (condition) {
+    strncpy(weatherCondition, condition, sizeof(weatherCondition) - 1);
   }
 }
 
@@ -111,77 +153,162 @@ void DisplayTask::drawEyesFrame() {
   if (pEyes) pEyes->update();
 }
 
-// =================== CLOCK FRAME (weather dashboard) ===================
-static const char* daysVN[] = {"CN","T2","T3","T4","T5","T6","T7"};
-static const char* monthsVN[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+// =================== ĐỒ HỌA WEATHER STATION (ẢNH 1) ===================
+
+void DisplayTask::drawSunWithRays(int16_t cx, int16_t cy) {
+  // Mặt trời hình tròn bán kính 5
+  oled.fillCircle(cx, cy, 5, SSD1306_WHITE);
+  // Mặt cười bên trong mặt trời
+  oled.drawPixel(cx - 2, cy - 1, SSD1306_BLACK); // mắt trái
+  oled.drawPixel(cx + 2, cy - 1, SSD1306_BLACK); // mắt phải
+  oled.drawPixel(cx - 2, cy + 2, SSD1306_BLACK); // nụ cười
+  oled.drawPixel(cx - 1, cy + 3, SSD1306_BLACK);
+  oled.drawPixel(cx,     cy + 3, SSD1306_BLACK);
+  oled.drawPixel(cx + 1, cy + 3, SSD1306_BLACK);
+  oled.drawPixel(cx + 2, cy + 2, SSD1306_BLACK);
+
+  // 8 tia nắng tỏa ra xung quanh
+  oled.drawLine(cx, cy - 7, cx, cy - 9, SSD1306_WHITE);
+  oled.drawLine(cx, cy + 7, cx, cy + 9, SSD1306_WHITE);
+  oled.drawLine(cx - 7, cy, cx - 9, cy, SSD1306_WHITE);
+  oled.drawLine(cx + 7, cy, cx + 9, cy, SSD1306_WHITE);
+  oled.drawLine(cx - 5, cy - 5, cx - 7, cy - 7, SSD1306_WHITE);
+  oled.drawLine(cx + 5, cy - 5, cx + 7, cy - 7, SSD1306_WHITE);
+  oled.drawLine(cx - 5, cy + 5, cx - 7, cy + 7, SSD1306_WHITE);
+  oled.drawLine(cx + 5, cy + 5, cx + 7, cy + 7, SSD1306_WHITE);
+}
+
+void DisplayTask::drawCloud(int16_t x, int16_t y) {
+  // Cụm mây bồng bềnh
+  oled.fillCircle(x + 5,  y + 6, 4, SSD1306_WHITE);
+  oled.fillCircle(x + 11, y + 4, 5, SSD1306_WHITE);
+  oled.fillCircle(x + 16, y + 7, 3, SSD1306_WHITE);
+  oled.fillRect(x + 4,   y + 6, 13, 5, SSD1306_WHITE);
+}
+
+void DisplayTask::drawTrendBars(int16_t startX, int16_t baseY) {
+  // 7 cột biểu đồ xu hướng nhiệt độ / hoạt động dạng thanh phân đoạn (Equalizer style)
+  for (int i = 0; i < 7; i++) {
+    int bx = startX + i * 6;
+    int h = constrain(trendBars[i], 2, 18);
+    for (int y = 0; y < h; y += 3) {
+      oled.drawFastHLine(bx, baseY - y, 4, SSD1306_WHITE);
+      if (y + 1 < h) {
+        oled.drawFastHLine(bx, baseY - y - 1, 4, SSD1306_WHITE);
+      }
+    }
+  }
+}
+
+void DisplayTask::drawDroplet(int16_t x, int16_t y) {
+  // Icon giọt nước (độ ẩm)
+  oled.drawPixel(x + 2, y, SSD1306_WHITE);
+  oled.drawLine(x + 1, y + 1, x + 3, y + 1, SSD1306_WHITE);
+  oled.drawLine(x,     y + 2, x + 4, y + 2, SSD1306_WHITE);
+  oled.drawLine(x,     y + 3, x + 4, y + 3, SSD1306_WHITE);
+  oled.drawLine(x + 1, y + 4, x + 3, y + 4, SSD1306_WHITE);
+}
+
+void DisplayTask::drawThermometer(int16_t x, int16_t y) {
+  // Icon nhiệt kế
+  oled.drawLine(x + 1, y, x + 1, y + 4, SSD1306_WHITE);
+  oled.drawPixel(x,     y + 1, SSD1306_WHITE);
+  oled.drawPixel(x + 2, y + 1, SSD1306_WHITE);
+  oled.fillCircle(x + 1, y + 6, 2, SSD1306_WHITE);
+}
 
 void DisplayTask::drawClockFrame() {
   if (!oledOk) return;
   oled.clearDisplay();
 
-  // ---- Tính thời gian giả định (offline, không NTP) ----
-  // base: 2026-01-01 00:00:00 UTC, mỗi millis() = thời gian thực từ boot
-  // Hiển thị tương đối: dựa trên millis() để tránh phụ thuộc WiFi
-  unsigned long upMs = millis() - bootMs;
-  unsigned long secs = upMs / 1000;
-  unsigned long mins_l = (secs / 60) % 60;
-  unsigned long hours_l = (secs / 3600) % 24;
-  unsigned long days_l = secs / 86400;
+  unsigned long now = millis();
+  unsigned long curTotalSec = baseTimeSec + (now - bootMs) / 1000;
+  int curSec  = curTotalSec % 60;
+  int curMin  = (curTotalSec / 60) % 60;
+  int curHour = (curTotalSec / 3600) % 24;
+  unsigned long totalDays = curTotalSec / 86400;
+  int weekday = (totalDays + 4) % 7; // 0=CN, 1=T2, ..., 6=SAT (base 1970 là Thứ 5)
 
-  // Date giả - base 2026-01-01 (thứ 5)
-  struct tm fake = {0};
-  fake.tm_year = 2026 - 1900;
-  fake.tm_mon  = 0;
-  fake.tm_mday = 1 + days_l;
-  fake.tm_hour = hours_l;
-  fake.tm_min  = mins_l;
-  fake.tm_sec  = secs % 60;
-  // tính thức đơn giản (không chính xác tuyệt đối - không cần thiết)
-  int weekday = (5 + days_l) % 7;  // 2026-01-01 là T5 (weekday index 5)
+  // Cập nhật hoạt ảnh biểu đồ trend
+  if (now - lastTrendUpdateMs >= 2500) {
+    lastTrendUpdateMs = now;
+    for (int i = 0; i < 6; i++) {
+      trendBars[i] = trendBars[i + 1];
+    }
+    int nextH = 6 + (int)(sin((float)now * 0.0015f) * 4.0f) + (random(0, 5));
+    trendBars[6] = constrain(nextH, 2, 18);
+  }
 
-  // ============= TOP ROW: Mood + Clients =============
-  oled.setTextSize(1);
-  oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(0, 0);
-  oled.printf(">%s", _mood);
-  oled.setCursor(SCREEN_W - 32, 0);
-  oled.printf("W%d", _clients);
+  // Đọc nhiệt độ chip ESP32-S3 ước lượng nhiệt độ phòng
+  #if defined(ESP32)
+  float rawChipTemp = temperatureRead();
+  if (rawChipTemp > 10.0f && rawChipTemp < 85.0f) {
+    float estAmbient = rawChipTemp - 11.0f;
+    tempC = (tempC * 0.95f) + (estAmbient * 0.05f);
+  }
+  #endif
 
-  // ============= BIG CLOCK (center, 2x scale) =============
+  // ================= 1. NỬA TRÊN: ICON THỜI TIẾT + ĐỒNG HỒ SỐ LỚN =================
+  // Mặt Trời cười có tia nắng + Cụm mây (Ảnh 1 góc trái trên)
+  drawSunWithRays(11, 11);
+  drawCloud(22, 11);
+
+  // Đồng hồ kỹ thuật số lớn: HH:MM
   oled.setTextSize(2);
-  char timeFmt[12];
-  snprintf(timeFmt, sizeof(timeFmt), "%02lu:%02lu", hours_l, mins_l);
-  int16_t x1, y1;
-  uint16_t w, h;
-  oled.getTextBounds(timeFmt, 0, 0, &x1, &y1, &w, &h);
-  oled.setCursor((SCREEN_W - w) / 2, 14);
-  oled.print(timeFmt);
+  oled.setTextColor(SSD1306_WHITE);
+  oled.setCursor(44, 2);
+  bool colonBlink = ((now / 500) % 2 == 0);
+  char timeStr[8];
+  snprintf(timeStr, sizeof(timeStr), "%02d%c%02d", curHour, colonBlink ? ':' : ' ', curMin);
+  oled.print(timeStr);
 
-  // ============= DATE (under clock) =============
+  // Giây nhỏ kế bên
   oled.setTextSize(1);
-  char dateBuf[24];
-  snprintf(dateBuf, sizeof(dateBuf), "%s %d %s",
-           daysVN[weekday], fake.tm_mday, monthsVN[fake.tm_mon % 12]);
-  oled.getTextBounds(dateBuf, 0, 0, &x1, &y1, &w, &h);
-  oled.setCursor((SCREEN_W - w) / 2, 32);
-  oled.print(dateBuf);
+  oled.setCursor(106, 3);
+  oled.printf(":%02d", curSec);
 
-  // ============= BOTTOM: stats + uptime =============
-  oled.setCursor(0, 44);
-  oled.printf("PAN%3d", (int)_pan);
-  oled.setCursor(44, 44);
-  oled.printf("TILT%3d", (int)_tilt);
-  oled.setCursor(SCREEN_W - 22, 44);
-  oled.printf("+%luh", hours_l);
+  // Khung thứ trong tuần [SAT] giống hệt ảnh 1
+  static const char* daysVN[] = {"CN", "T2", "T3", "T4", "T5", "T6", "SAT"};
+  oled.drawRoundRect(44, 19, 28, 9, 2, SSD1306_WHITE);
+  oled.setCursor(48, 20);
+  oled.print(daysVN[weekday]);
 
-  oled.setCursor(0, 54);
-  oled.printf("MODE:%s", _modeStr);
-  oled.setCursor(SCREEN_W - 22, 54);
-  oled.printf("D%ld", days_l);
+  // Ngày tháng kế bên khung thứ
+  int mday = 1 + (totalDays % 30);
+  int mon  = 1 + ((totalDays / 30) % 12);
+  oled.setCursor(76, 20);
+  oled.printf("%02d/%02d", mday, mon);
 
-  // separator lines
-  oled.drawLine(0, 11, SCREEN_W, 11, SSD1306_WHITE);
-  oled.drawLine(0, 42, SCREEN_W, 42, SSD1306_WHITE);
+  // Trạng thái Robot rảnh
+  oled.setCursor(106, 20);
+  oled.print("IDLE");
+
+  // ================= 2. ĐƯỜNG PHÂN CÁCH NGANG =================
+  oled.drawLine(0, 30, SCREEN_W - 1, 30, SSD1306_WHITE);
+
+  // ================= 3. NỬA DƯỚI: TEMPERATURE TREND + ĐỘ ẨM + NHIỆT ĐỘ =================
+  // Nhãn TREND và biểu đồ cột xu hướng
+  oled.setCursor(2, 33);
+  oled.print("TREND");
+  drawTrendBars(2, 62);
+
+  // Vạch phân cách đứng
+  oled.drawLine(48, 32, 48, 62, SSD1306_WHITE);
+
+  // Độ ẩm: icon giọt nước 💧 + 60%
+  drawDroplet(52, 34);
+  oled.setCursor(60, 34);
+  oled.printf("%d%%", (int)humidity);
+
+  // Nhiệt độ: icon nhiệt kế 🌡️ + 26.8°C
+  drawThermometer(52, 45);
+  oled.setCursor(60, 45);
+  oled.printf("%.1f C", tempC);
+
+  // Trạng thái cảm biến hồng ngoại
+  oled.setCursor(52, 55);
+  oled.print("IR: SAN SANG");
+
   oled.display();
 }
 
@@ -201,7 +328,7 @@ void DisplayTask::tick() {
     setMode(DM_CLOCK);
   }
 
-  // Auto presence: có tương tác gần đây → EYES, không thì CLOCK
+  // Auto presence: có tương tác gần đây → EYES, không thì tự động về CLOCK (ảnh 1)
   if (mode != DM_STREAM) {
     if (mode == DM_EYES && (now - lastPresenceMs > PRESENCE_TIMEOUT_MS)) {
       setMode(DM_CLOCK);
@@ -211,7 +338,7 @@ void DisplayTask::tick() {
   // FPS giới hạn theo mode
   uint16_t targetPeriod;
   if (mode == DM_EYES)       targetPeriod = 1000 / DISPLAY_FPS_HZ;
-  else if (mode == DM_CLOCK) targetPeriod = 1000 / 4; // 4 FPS cho clock
+  else if (mode == DM_CLOCK) targetPeriod = 1000 / 10; // 10 FPS cho clock và animation mượt
   else                        targetPeriod = 33;
   if (now - lastFrameMs < targetPeriod) return;
   lastFrameMs = now;

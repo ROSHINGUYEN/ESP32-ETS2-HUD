@@ -10,6 +10,8 @@
 #include "config.h"
 #include <ArduinoJson.h>
 #include <DNSServer.h>
+#include "Globals.h"
+#include "DisplayTask.h"
 
 static DNSServer g_dns;
 
@@ -95,7 +97,7 @@ void WebApi::setupRoutes() {
   server.on("/api/head", HTTP_POST, [this](AsyncWebServerRequest* r) {
     if (!_head) { sendJson(r, "{\"ok\":false,\"err\":\"no_head\"}", 500); return; }
     if (!bodyDone()) { sendJson(r, "{\"ok\":false,\"err\":\"no_body\"}", 400); return; }
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
     float pan  = doc["pan"]  | PAN_CENTER_DEG;
     float tilt = doc["tilt"] | TILT_CENTER_DEG;
@@ -127,7 +129,7 @@ void WebApi::setupRoutes() {
   // ---- EMOTION ----
   server.on("/api/emotion", HTTP_POST, [this](AsyncWebServerRequest* r) {
     if (!bodyDone()) { sendJson(r, "{\"ok\":false}", 400); return; }
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
     const char* v = doc["value"] | "NEUTRAL";
     Mood m = MOOD_NEUTRAL;
@@ -145,7 +147,7 @@ void WebApi::setupRoutes() {
   // ---- GESTURE ----
   server.on("/api/gesture", HTTP_POST, [this](AsyncWebServerRequest* r) {
     if (!bodyDone()) { sendJson(r, "{\"ok\":false}", 400); return; }
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
     const char* g = doc["value"] | "";
     GestureId gid = GES_NONE;
@@ -170,7 +172,7 @@ void WebApi::setupRoutes() {
   // ---- MODE ----
   server.on("/api/mode", HTTP_POST, [this](AsyncWebServerRequest* r) {
     if (!bodyDone()) { sendJson(r, "{\"ok\":false}", 400); return; }
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
     const char* m = doc["value"] | "CALM";
     AutonomyMode am = AM_CALM;
@@ -186,7 +188,7 @@ void WebApi::setupRoutes() {
   server.on("/api/calib", HTTP_POST, [this](AsyncWebServerRequest* r) {
     if (!_head) { sendJson(r, "{\"ok\":false}", 500); return; }
     if (!bodyDone()) { sendJson(r, "{\"ok\":false}", 400); return; }
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
     int8_t po = constrain((int8_t)(doc["pan_off"]  | 0), (int8_t)-30, (int8_t)30);
     int8_t to = constrain((int8_t)(doc["tilt_off"] | 0), (int8_t)-30, (int8_t)30);
@@ -194,9 +196,39 @@ void WebApi::setupRoutes() {
     sendJson(r, "{\"ok\":true}");
   });
 
+  // ---- TIME SYNC (Đồng bộ thời gian thực cho màn hình thời tiết) ----
+  server.on("/api/time", HTTP_POST, [this](AsyncWebServerRequest* r) {
+    if (!bodyDone()) { sendJson(r, "{\"ok\":false}", 400); return; }
+    JsonDocument doc;
+    if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
+    int hr   = doc["hr"]   | 12;
+    int min  = doc["min"]  | 0;
+    int sec  = doc["sec"]  | 0;
+    int day  = doc["day"]  | 1;
+    int mon  = doc["mon"]  | 1;
+    int yr   = doc["yr"]   | 2026;
+    int wday = doc["wday"] | 0;
+    DisplayTask* d = globalsGetDisplay();
+    if (d) d->setTime(hr, min, sec, day, mon, yr, wday);
+    sendJson(r, "{\"ok\":true}");
+  });
+
+  // ---- WEATHER SYNC ----
+  server.on("/api/weather", HTTP_POST, [this](AsyncWebServerRequest* r) {
+    if (!bodyDone()) { sendJson(r, "{\"ok\":false}", 400); return; }
+    JsonDocument doc;
+    if (deserializeJson(doc, _bodyCtx.buf)) { sendJson(r, "{\"ok\":false}", 400); return; }
+    float temp = doc["temp"] | 26.8f;
+    float humi = doc["humi"] | 60.0f;
+    const char* cond = doc["cond"] | "SUNNY";
+    DisplayTask* d = globalsGetDisplay();
+    if (d) d->setWeather(temp, humi, cond);
+    sendJson(r, "{\"ok\":true}");
+  });
+
   // ---- STATE ----
   server.on("/api/state", HTTP_GET, [this](AsyncWebServerRequest* r) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
     if (_head) {
       doc["pan"]    = roundf(_head->getCurrentPan());
       doc["tilt"]   = roundf(_head->getCurrentTilt());

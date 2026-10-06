@@ -68,8 +68,15 @@ void IrGesture::processLevel(uint8_t level, unsigned long now, bool isP1) {
 void IrGesture::tick() {
   if (pin1 == 0) return;
   unsigned long now = millis();
-  processLevel(digitalRead(pin1), now, true);
-  if (pin2 != 0xFF) processLevel(digitalRead(pin2), now, false);
+
+  uint8_t r1 = digitalRead(pin1);
+  uint8_t r2 = (pin2 != 0xFF) ? digitalRead(pin2) : (activeLow ? HIGH : LOW);
+  bool a1 = activeLow ? (r1 == LOW) : (r1 == HIGH);
+  bool a2 = (pin2 != 0xFF) && (activeLow ? (r2 == LOW) : (r2 == HIGH));
+  isActiveFlag = a1 || a2;
+
+  processLevel(r1, now, true);
+  if (pin2 != 0xFF) processLevel(r2, now, false);
 
   // Reset wave window
   if (now - lastChangeMs > IR_WAVE_WINDOW_MS) {

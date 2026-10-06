@@ -10,6 +10,7 @@
 #include "DisplayTask.h"
 #include "IrGesture.h"
 #include "WebApi.h"
+#include "Globals.h"
 
 void taskServoEntry(void* arg) {
   HeadServo* head = (HeadServo*)arg;
@@ -45,9 +46,18 @@ void taskBrainEntry(void* arg) {
     // IR tick
     if (ba->ir) ba->ir->tick();
     IrEvent e = ba->ir ? ba->ir->consumeEvent() : IR_EVT_NONE;
+    bool irActive = ba->ir ? (ba->ir->isCurrentlyActive() || ba->ir->hasRecentMotion()) : false;
+
+    // Khi phát hiện vật thể/chuyển động qua mạch hồng ngoại -> Lập tức hiện mắt robot!
+    if (irActive || e != IR_EVT_NONE) {
+      DisplayTask* disp = globalsGetDisplay();
+      if (disp) {
+        disp->notifyPresence();
+      }
+      ba->auto_ptr->notifyManual();
+    }
 
     if (e != IR_EVT_NONE) {
-      ba->auto_ptr->notifyManual();
       switch (e) {
         case IR_EVT_TAP:       ba->emo->setMood(MOOD_HAPPY); break;
         case IR_EVT_DOUBLE:    ba->auto_ptr->setMode((AutonomyMode)((ba->auto_ptr->getMode() + 1) % 4)); break;

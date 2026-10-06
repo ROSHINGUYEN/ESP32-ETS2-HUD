@@ -431,18 +431,313 @@
       border-color: rgba(0, 240, 255, 0.25) transparent transparent transparent;
     }
 
-    /* Robot Avatar Card (From User Uploaded Image 2 with Laptop) */
+    /* Robot View Mode Tabs */
+    .robot-view-tabs {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+      margin-bottom: 12px;
+      background: rgba(0, 0, 0, 0.45);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .robot-tab-btn {
+      flex: 1;
+      padding: 7px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--text-dim);
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .robot-tab-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .robot-tab-btn.active {
+      color: #030712;
+      background: var(--cyan);
+      box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
+    }
+
+    /* Robot Stage & 3D Perspective Box */
+    .robot-stage-wrapper {
+      width: 100%;
+      margin: 0 auto 12px;
+    }
     .robot-stage {
       width: 100%;
-      max-width: 240px;
-      margin: 0 auto 16px;
+      max-width: 280px;
+      margin: 0 auto;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
+      perspective: 700px;
     }
 
+    /* 3D Robot Head Structure */
+    .virtual-robot-head {
+      width: 100%;
+      background: linear-gradient(145deg, #1e293b 0%, #0f172a 65%, #030712 100%);
+      border: 2px solid var(--border-bright);
+      border-radius: 36px 36px 28px 28px;
+      padding: 18px 14px 14px;
+      position: relative;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 240, 255, 0.25);
+      transition: transform 0.15s ease-out, box-shadow 0.3s ease;
+      transform-style: preserve-3d;
+      user-select: none;
+    }
+    .virtual-robot-head:hover {
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.9), 0 0 35px rgba(0, 240, 255, 0.45);
+      border-color: var(--cyan);
+    }
+
+    /* Antenna */
+    .antenna-stem {
+      position: absolute;
+      top: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 16px;
+      background: linear-gradient(180deg, var(--cyan) 0%, #334155 100%);
+      border-radius: 2px 2px 0 0;
+    }
+    .antenna-tip {
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 12px var(--cyan), 0 0 24px var(--cyan);
+      animation: antennaPulse 2s infinite ease-in-out;
+    }
+    @keyframes antennaPulse {
+      0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.85; }
+      50% { transform: translateX(-50%) scale(1.3); opacity: 1; box-shadow: 0 0 18px var(--cyan), 0 0 30px var(--cyan); }
+    }
+
+    /* Ear Rings (Glowing LED Status) */
+    .ear-ring {
+      position: absolute;
+      top: 50%;
+      width: 14px;
+      height: 48px;
+      border-radius: 8px;
+      background: #0f172a;
+      border: 2px solid var(--border-bright);
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.35);
+      transition: all 0.3s ease;
+    }
+    .ear-ring.left {
+      left: -9px;
+      transform: translateY(-50%);
+    }
+    .ear-ring.right {
+      right: -9px;
+      transform: translateY(-50%);
+    }
+    .ear-ring-core {
+      position: absolute;
+      inset: 4px 2px;
+      border-radius: 4px;
+      background: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan);
+      animation: earPulse 3s infinite ease-in-out;
+    }
+    @keyframes earPulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+    .ear-ring.connected .ear-ring-core {
+      background: #10b981;
+      box-shadow: 0 0 12px #10b981;
+    }
+    .ear-ring.flashing .ear-ring-core {
+      background: #f59e0b;
+      box-shadow: 0 0 15px #f59e0b;
+      animation: earPulseFast 0.5s infinite;
+    }
+    @keyframes earPulseFast {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+
+    /* Screen Visor (OLED Display Casing) */
+    .oled-visor {
+      position: relative;
+      background: #030712;
+      border: 2px solid #1e293b;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.9), 0 0 18px rgba(0, 240, 255, 0.2);
+      padding: 6px;
+      cursor: pointer;
+    }
+    .oled-visor-glare {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 40%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
+      pointer-events: none;
+      border-radius: 20px 20px 0 0;
+    }
+    .oled-canvas {
+      display: block;
+      width: 100%;
+      height: 122px;
+      background: #040814;
+      border-radius: 14px;
+      image-rendering: pixelated;
+    }
+
+    /* Robot Badge Floating */
+    .robot-badge-floating {
+      margin-top: 10px;
+      background: rgba(7, 11, 20, 0.9);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--cyan);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Quick Mode Switcher & Emotion Bar */
+    .robot-controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      width: 100%;
+      margin-top: 10px;
+      justify-content: center;
+    }
+    .btn-robot-ctrl {
+      padding: 5px 8px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-robot-ctrl:hover {
+      background: rgba(0, 240, 255, 0.15);
+      color: #fff;
+      border-color: var(--border-bright);
+      transform: translateY(-1px);
+    }
+    .btn-robot-ctrl.active {
+      background: rgba(0, 240, 255, 0.25);
+      color: var(--cyan);
+      border-color: var(--cyan);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+    }
+    .btn-robot-ir-trigger {
+      width: 100%;
+      padding: 7px 10px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      border-radius: 8px;
+      color: #fca5a5;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 5px;
+    }
+    .btn-robot-ir-trigger:hover {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.35) 0%, rgba(245, 158, 11, 0.35) 100%);
+      color: #fff;
+      border-color: #ef4444;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.4);
+    }
+
+    /* Pan/Tilt Mini D-Pad Control */
+    .robot-dpad-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      margin-top: 8px;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .dpad-label {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      text-align: left;
+      line-height: 1.3;
+    }
+    .dpad-label b {
+      color: var(--cyan);
+    }
+    .dpad-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 22px);
+      grid-template-rows: repeat(2, 22px);
+      gap: 3px;
+    }
+    .btn-dpad {
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--cyan);
+      font-size: 0.62rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+    .btn-dpad:hover {
+      background: var(--cyan);
+      color: #030712;
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    /* Robot Avatar Card (Photo Reference Tab) */
     .robot-avatar-card {
       position: relative;
       width: 100%;
@@ -453,49 +748,20 @@
       background: #ffffff;
       transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    .robot-stage:hover .robot-avatar-card {
-      transform: translateY(-4px) scale(1.03);
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 240, 255, 0.55);
-      border-color: var(--cyan);
-    }
     .robot-avatar-img {
       width: 100%;
-      height: 240px;
+      height: 230px;
       display: block;
       object-fit: contain;
       background: #ffffff;
-      padding: 10px;
+      padding: 8px;
       transition: transform 0.3s ease;
-    }
-    .robot-stage:hover .robot-avatar-img {
-      transform: scale(1.02);
     }
     .robot-avatar-overlay {
       position: absolute;
       inset: 0;
       pointer-events: none;
       background: radial-gradient(circle at 50% 90%, rgba(0, 240, 255, 0.18) 0%, transparent 65%);
-    }
-    .robot-badge-floating {
-      position: absolute;
-      bottom: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(7, 11, 20, 0.9);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 4px 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-family: var(--font-mono);
-      font-size: 0.65rem;
-      font-weight: 700;
-      color: var(--cyan);
-      white-space: nowrap;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
     }
 
     .robot-nameplate h3 {
@@ -513,7 +779,7 @@
       font-family: var(--font-mono);
       color: var(--text-dim);
       margin-top: 2px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     /* Live Hardware Telemetry Status */
@@ -1171,14 +1437,84 @@
           Sẵn sàng nạp firmware! Bạn có thể nhấn <b>Tải bản build dự án</b> hoặc chọn tệp <b>.bin</b> từ máy tính để nạp vào ESP32-S3 nhé! ⚡
         </div>
 
-        <!-- Robot Coder Image Stage (From Image 2 with Laptop) -->
-        <div class="robot-stage" id="robotStage" title="Robot Coder MIU Eilik">
-          <div class="robot-avatar-card">
-            <img src="assets/robot_eilik.jpg" onerror="this.src='data:image/jpeg;base64,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'" alt="Robot Coder MIU Eilik" class="robot-avatar-img" />
-            <div class="robot-avatar-overlay"></div>
-            <div class="robot-badge-floating">
-              <span class="pulse-dot"></span>
-              <span>CODER BOT ONLINE</span>
+        <!-- Mode Tabs: Virtual Robot UI (Default) vs Photo Reference -->
+        <div class="robot-view-tabs">
+          <button class="robot-tab-btn active" id="tabVirtualRobot">
+            <span>🤖 ROBOT ẢO (OLED)</span>
+          </button>
+          <button class="robot-tab-btn" id="tabPhotoReference">
+            <span>📸 ẢNH MẪU CODER</span>
+          </button>
+        </div>
+
+        <div class="robot-stage-wrapper">
+          <!-- View 1: INTERACTIVE VIRTUAL ROBOT HEAD & OLED FACE (DEFAULT) -->
+          <div class="robot-stage" id="virtualRobotStage">
+            <div class="virtual-robot-head" id="robotHead3D" title="Robot Eilik Ảo - Di chuyển chuột để xoay đầu!">
+              <!-- Antenna -->
+              <div class="antenna-stem">
+                <div class="antenna-tip"></div>
+              </div>
+
+              <!-- Ear Status Rings -->
+              <div class="ear-ring left" id="earLeft"><div class="ear-ring-core"></div></div>
+              <div class="ear-ring right" id="earRight"><div class="ear-ring-core"></div></div>
+
+              <!-- Curved OLED Visor Screen (Simulating Robot Face 128x64) -->
+              <div class="oled-visor" id="oledVisor" title="Nhấp vào màn hình để vuốt ve Robot!">
+                <canvas id="virtualOledCanvas" class="oled-canvas" width="256" height="128"></canvas>
+                <div class="oled-visor-glare"></div>
+              </div>
+
+              <!-- Floating Online Badge -->
+              <div class="robot-badge-floating">
+                <span class="pulse-dot"></span>
+                <span id="robotScreenModeBadge">ROBOEYES ONLINE</span>
+              </div>
+            </div>
+
+            <!-- Emotion & Screen Mode Quick Bar -->
+            <div class="robot-controls-bar">
+              <button class="btn-robot-ctrl active" id="btnModeEyes" title="Chế độ Mắt Biểu Cảm">👀 Mắt</button>
+              <button class="btn-robot-ctrl" id="btnModeWeather" title="Trạm Thời Tiết & Đồng Hồ">🌤️ Thời tiết</button>
+              <button class="btn-robot-ctrl" id="btnMoodHappy" title="Cảm xúc Vui vẻ">😊 Vui</button>
+              <button class="btn-robot-ctrl" id="btnMoodAngry" title="Cảm xúc Giận dữ">😠 Giận</button>
+              <button class="btn-robot-ctrl" id="btnMoodHeart" title="Thả tim yêu thương">💖 Tim</button>
+              <button class="btn-robot-ctrl" id="btnMoodSleep" title="Ngủ gật">😴 Ngủ</button>
+            </div>
+
+            <!-- Simulated IR Gesture Wave Trigger Button -->
+            <button class="btn-robot-ir-trigger" id="btnSimulateIR">
+              <span>👋</span>
+              <span>VẪY TAY TRƯỚC CẢM BIẾN HỒNG NGOẠI (TEST IR)</span>
+            </button>
+
+            <!-- 2-Axis Pan/Tilt Gimbal D-Pad -->
+            <div class="robot-dpad-box">
+              <div class="dpad-label">
+                <div>ĐIỀU KHIỂN ĐẦU</div>
+                <div>Góc: <b id="dispHeadAngle">0°, 0°</b></div>
+              </div>
+              <div class="dpad-buttons">
+                <div></div>
+                <button class="btn-dpad" id="btnHeadUp" title="Ngẩng đầu lên">▲</button>
+                <div></div>
+                <button class="btn-dpad" id="btnHeadLeft" title="Quay sang trái">◀</button>
+                <button class="btn-dpad" id="btnHeadCenter" title="Căn giữa">●</button>
+                <button class="btn-dpad" id="btnHeadRight" title="Quay sang phải">▶</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- View 2: PHOTO REFERENCE (Ẩn mặc định, hiển thị khi chọn Tab Ảnh) -->
+          <div class="robot-stage" id="photoRobotStage" style="display: none;" title="Ảnh mẫu Robot Coder Eilik">
+            <div class="robot-avatar-card">
+              <img src="assets/robot_eilik.jpg" onerror="this.src='data:image/jpeg;base64,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'" alt="Robot Coder MIU Eilik" class="robot-avatar-img" />
+              <div class="robot-avatar-overlay"></div>
+              <div class="robot-badge-floating">
+                <span class="pulse-dot"></span>
+                <span>CODER BOT ONLINE</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1811,6 +2147,478 @@
       robotStage.style.transform = 'scale(0.96)';
       setTimeout(() => { robotStage.style.transform = ''; }, 200);
     });
+
+    // =====================================================================
+    // VIRTUAL ROBOT UI — TAB SWITCHING
+    // =====================================================================
+    const tabVirtualRobot = document.getElementById('tabVirtualRobot');
+    const tabPhotoReference = document.getElementById('tabPhotoReference');
+    const virtualRobotStage = document.getElementById('virtualRobotStage');
+    const photoRobotStage = document.getElementById('photoRobotStage');
+
+    tabVirtualRobot.addEventListener('click', () => {
+      tabVirtualRobot.classList.add('active');
+      tabPhotoReference.classList.remove('active');
+      virtualRobotStage.style.display = '';
+      photoRobotStage.style.display = 'none';
+    });
+    tabPhotoReference.addEventListener('click', () => {
+      tabPhotoReference.classList.add('active');
+      tabVirtualRobot.classList.remove('active');
+      photoRobotStage.style.display = '';
+      virtualRobotStage.style.display = 'none';
+    });
+
+    // =====================================================================
+    // VIRTUAL ROBOT — OLED CANVAS ENGINE (RoboEyes Simulation)
+    // =====================================================================
+    const oledCanvas = document.getElementById('virtualOledCanvas');
+    const oledCtx = oledCanvas.getContext('2d');
+    const robotHead3D = document.getElementById('robotHead3D');
+    const oledVisor = document.getElementById('oledVisor');
+    const robotScreenModeBadge = document.getElementById('robotScreenModeBadge');
+    const earLeft = document.getElementById('earLeft');
+    const earRight = document.getElementById('earRight');
+    const dispHeadAngle = document.getElementById('dispHeadAngle');
+
+    // --- Robot state machine ---
+    const robotState = {
+      mode: 'eyes',       // 'eyes' | 'weather' | 'ir'
+      mood: 'normal',     // 'normal' | 'happy' | 'angry' | 'heart' | 'sleep'
+      blink: false,
+      blinkTimer: 0,
+      pupilX: 0,
+      pupilY: 0,
+      targetPupilX: 0,
+      targetPupilY: 0,
+      heartAnim: 0,
+      sleepZs: [{ x: 178, y: 22, s: 0.4 }, { x: 196, y: 12, s: 0.65 }, { x: 218, y: 2, s: 0.9 }],
+      timeStr: '',
+      dateStr: '',
+      panAngle: 0,
+      tiltAngle: 0,
+      irReaction: false,
+      irTimer: 0,
+      frameCount: 0,
+    };
+
+    // Clock update
+    function updateRobotClock() {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      robotState.timeStr = `${hh}:${mm}:${ss}`;
+      const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mo = String(now.getMonth() + 1).padStart(2, '0');
+      robotState.dateStr = `${days[now.getDay()]}  ${dd}/${mo}/${now.getFullYear()}`;
+    }
+
+    // --- Drawing functions ---
+    function clearOled() {
+      oledCtx.clearRect(0, 0, oledCanvas.width, oledCanvas.height);
+      oledCtx.fillStyle = '#040814';
+      oledCtx.fillRect(0, 0, oledCanvas.width, oledCanvas.height);
+    }
+
+    function drawPixelGlow(ctx, x, y, w, h, color, glowColor, glowRadius = 12) {
+      ctx.shadowBlur = glowRadius;
+      ctx.shadowColor = glowColor;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+      ctx.shadowBlur = 0;
+    }
+
+    // Eye shape: rounded rect eye with pupil
+    function drawEye(ctx, cx, cy, ew, eh, pupilDx, pupilDy, isBlink, isAngry, isHappy, isSleep) {
+      const rx = ew / 2;
+      const ry = isBlink ? 2 : eh / 2;
+
+      ctx.save();
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#00f0ff';
+
+      // Eye white (outer glow fill)
+      ctx.fillStyle = '#00f0ff';
+      ctx.beginPath();
+      if (isBlink || isSleep) {
+        // Blink = thin horizontal line
+        ctx.roundRect(cx - rx, cy - 3, ew, 6, 3);
+      } else if (isHappy) {
+        // Happy = arc (smile shape upward)
+        ctx.beginPath();
+        ctx.arc(cx, cy + ry * 0.3, rx * 1.0, Math.PI, 0, false);
+        ctx.closePath();
+      } else if (isAngry) {
+        // Angry = trapezoid with angled top
+        ctx.moveTo(cx - rx, cy - ry * 0.6);
+        ctx.lineTo(cx + rx, cy - ry);
+        ctx.lineTo(cx + rx, cy + ry);
+        ctx.lineTo(cx - rx, cy + ry);
+        ctx.closePath();
+      } else {
+        ctx.roundRect(cx - rx, cy - ry, ew, eh, ry * 0.45);
+      }
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Pupil (dark circle inside)
+      if (!isBlink && !isSleep && !isHappy) {
+        const pr = Math.min(rx, ry) * 0.45;
+        const maxTravel = Math.min(rx, ry) * 0.3;
+        const px = cx + Math.max(-maxTravel, Math.min(maxTravel, pupilDx));
+        const py = cy + Math.max(-maxTravel, Math.min(maxTravel, pupilDy));
+        ctx.fillStyle = '#030712';
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fill();
+        // Pupil specular
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.beginPath();
+        ctx.arc(px - pr * 0.3, py - pr * 0.3, pr * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Heart shape
+    function drawHeart(ctx, cx, cy, size) {
+      ctx.save();
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ff4daa';
+      ctx.fillStyle = '#ff4daa';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + size * 0.4);
+      ctx.bezierCurveTo(cx - size, cy - size * 0.3, cx - size * 1.5, cy + size * 0.6, cx, cy + size * 1.3);
+      ctx.bezierCurveTo(cx + size * 1.5, cy + size * 0.6, cx + size, cy - size * 0.3, cx, cy + size * 0.4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Small "Z" for sleep
+    function drawZ(ctx, x, y, size, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#818cf8';
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = size * 0.18;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + size, y);
+      ctx.lineTo(x, y + size);
+      ctx.lineTo(x + size, y + size);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Clock / weather mode
+    function drawClockMode(ctx) {
+      // Background scanlines effect
+      for (let i = 0; i < oledCanvas.height; i += 4) {
+        ctx.fillStyle = 'rgba(0,240,255,0.03)';
+        ctx.fillRect(0, i, oledCanvas.width, 2);
+      }
+      // Time
+      ctx.save();
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = '#00f0ff';
+      ctx.fillStyle = '#00f0ff';
+      ctx.font = 'bold 42px "Share Tech Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(robotState.timeStr, oledCanvas.width / 2, 62);
+      ctx.shadowBlur = 0;
+      // Date
+      ctx.fillStyle = '#4dd9ec';
+      ctx.font = '14px "Share Tech Mono", monospace';
+      ctx.fillText(robotState.dateStr, oledCanvas.width / 2, 88);
+      // Bottom status bar
+      ctx.fillStyle = 'rgba(0,240,255,0.3)';
+      ctx.fillRect(16, 102, oledCanvas.width - 32, 1);
+      ctx.fillStyle = '#4dd9ec';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('MIU EILIK', 18, 118);
+      ctx.textAlign = 'right';
+      ctx.fillText('ESP32-S3', oledCanvas.width - 18, 118);
+      ctx.restore();
+    }
+
+    // Main OLED render loop
+    function renderOled() {
+      const s = robotState;
+      s.frameCount++;
+      clearOled();
+
+      // Blink logic
+      s.blinkTimer--;
+      if (s.blinkTimer <= 0) {
+        s.blink = !s.blink;
+        s.blinkTimer = s.blink ? 6 : (80 + Math.random() * 120);
+      }
+
+      // Smooth pupil tracking
+      s.pupilX += (s.targetPupilX - s.pupilX) * 0.12;
+      s.pupilY += (s.targetPupilY - s.pupilY) * 0.12;
+
+      // IR reaction overrides mood briefly
+      if (s.irReaction) {
+        s.irTimer--;
+        if (s.irTimer <= 0) s.irReaction = false;
+      }
+
+      const activeMood = s.irReaction ? 'happy' : s.mood;
+
+      if (s.mode === 'weather') {
+        updateRobotClock();
+        drawClockMode(oledCtx);
+        robotScreenModeBadge.textContent = 'CLOCK MODE';
+      } else {
+        // Eyes mode
+        const W = oledCanvas.width;
+        const H = oledCanvas.height;
+        const isHappy  = activeMood === 'happy';
+        const isAngry  = activeMood === 'angry';
+        const isSleep  = activeMood === 'sleep' || s.blink;
+        const isHeart  = activeMood === 'heart';
+
+        const eyeW = 70, eyeH = 44;
+        const lx = W * 0.28, rx = W * 0.72;
+        const ey = H * 0.46;
+
+        if (isHeart) {
+          // Show two hearts instead of eyes
+          s.heartAnim = (s.heartAnim + 0.08) % (Math.PI * 2);
+          const pulse = 1 + Math.sin(s.heartAnim) * 0.12;
+          oledCtx.save();
+          oledCtx.scale(1, 1);
+          drawHeart(oledCtx, lx, ey - eyeH * 0.3, eyeH * 0.55 * pulse);
+          drawHeart(oledCtx, rx, ey - eyeH * 0.3, eyeH * 0.55 * pulse);
+          oledCtx.restore();
+          robotScreenModeBadge.textContent = '💖 LOVE MODE';
+        } else {
+          drawEye(oledCtx, lx, ey, eyeW, eyeH, s.pupilX, s.pupilY, s.blink && !isSleep, isAngry, isHappy, isSleep && activeMood === 'sleep');
+          drawEye(oledCtx, rx, ey, eyeW, eyeH, s.pupilX, s.pupilY, s.blink && !isSleep, isAngry, isHappy, isSleep && activeMood === 'sleep');
+          robotScreenModeBadge.textContent = isAngry ? '😠 ANGRY' : isHappy ? '😊 HAPPY' : isSleep ? '💤 ZZZ' : '👁 ROBO EYES';
+        }
+
+        // Sleep Zs floating up
+        if (activeMood === 'sleep') {
+          s.sleepZs.forEach((z, i) => {
+            z.y -= 0.4;
+            z.s += 0.003;
+            if (z.y < -20) { z.y = H * 0.2; z.s = 0.4 + i * 0.25; }
+            const alpha = Math.min(1, (H * 0.2 - z.y) / 60 + 0.3);
+            drawZ(oledCtx, z.x, z.y, 14 * z.s, Math.max(0, Math.min(1, alpha)));
+          });
+        }
+
+        // IR reaction wave visual
+        if (s.irReaction) {
+          const t = 1 - (s.irTimer / 90);
+          oledCtx.save();
+          oledCtx.strokeStyle = `rgba(0,240,255,${1 - t})`;
+          oledCtx.lineWidth = 2;
+          oledCtx.shadowBlur = 12;
+          oledCtx.shadowColor = '#00f0ff';
+          for (let r = 0; r < 3; r++) {
+            const rad = t * 60 + r * 18;
+            oledCtx.beginPath();
+            oledCtx.arc(W / 2, H / 2, rad, 0, Math.PI * 2);
+            oledCtx.stroke();
+          }
+          oledCtx.restore();
+        }
+      }
+    }
+
+    // Start OLED animation loop
+    let oledAnimId = null;
+    function startOledLoop() {
+      if (oledAnimId) return;
+      function tick() {
+        renderOled();
+        oledAnimId = requestAnimationFrame(tick);
+      }
+      tick();
+    }
+    startOledLoop();
+
+    // =====================================================================
+    // VIRTUAL ROBOT — 3D PARALLAX HEAD TILT (Mouse tracking)
+    // =====================================================================
+    const headWrapper = document.querySelector('.robot-stage-wrapper');
+    headWrapper.addEventListener('mousemove', (e) => {
+      const rect = robotHead3D.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = (e.clientX - cx) / (rect.width / 2);
+      const dy = (e.clientY - cy) / (rect.height / 2);
+      const rotY = dx * 14;
+      const rotX = -dy * 10;
+      robotHead3D.style.transform = `perspective(700px) rotateY(${rotY}deg) rotateX(${rotX}deg)`;
+      // Update OLED pupil tracking
+      robotState.targetPupilX = dx * 10;
+      robotState.targetPupilY = dy * 6;
+    });
+    headWrapper.addEventListener('mouseleave', () => {
+      robotHead3D.style.transform = '';
+      robotState.targetPupilX = 0;
+      robotState.targetPupilY = 0;
+    });
+
+    // OLED Visor click — random pupil jitter
+    oledVisor.addEventListener('click', () => {
+      robotState.targetPupilX = (Math.random() - 0.5) * 14;
+      robotState.targetPupilY = (Math.random() - 0.5) * 8;
+      setTimeout(() => { robotState.targetPupilX = 0; robotState.targetPupilY = 0; }, 600);
+      const cuteCmds = I18N[currentLang].speechCute;
+      eilikSpeech.innerHTML = cuteCmds[Math.floor(Math.random() * cuteCmds.length)];
+    });
+
+    // =====================================================================
+    // VIRTUAL ROBOT — EMOTION & MODE BUTTONS
+    // =====================================================================
+    const modeButtons = document.querySelectorAll('.btn-robot-ctrl');
+    function setActiveBtn(activeId) {
+      modeButtons.forEach(b => b.classList.remove('active'));
+      document.getElementById(activeId).classList.add('active');
+    }
+
+    document.getElementById('btnModeEyes').addEventListener('click', () => {
+      robotState.mode = 'eyes';
+      robotState.mood = 'normal';
+      setActiveBtn('btnModeEyes');
+      eilikSpeech.innerHTML = 'Chế độ RoboEyes — mắt robot đang theo dõi bạn! 👀';
+    });
+
+    document.getElementById('btnModeWeather').addEventListener('click', () => {
+      robotState.mode = 'weather';
+      setActiveBtn('btnModeWeather');
+      updateRobotClock();
+      eilikSpeech.innerHTML = 'Chế độ đồng hồ & thời gian thực! ⏱️';
+    });
+
+    document.getElementById('btnMoodHappy').addEventListener('click', () => {
+      robotState.mode = 'eyes';
+      robotState.mood = 'happy';
+      setActiveBtn('btnMoodHappy');
+      eilikSpeech.innerHTML = 'Tớ vui lắm! 😊 Hôm nay bạn thế nào rồi?';
+      sendSerialCommand('MOOD:HAPPY');
+    });
+
+    document.getElementById('btnMoodAngry').addEventListener('click', () => {
+      robotState.mode = 'eyes';
+      robotState.mood = 'angry';
+      setActiveBtn('btnMoodAngry');
+      eilikSpeech.innerHTML = '😠 Đừng chọc tớ! Tớ đang grrr đây!';
+      sendSerialCommand('MOOD:ANGRY');
+    });
+
+    document.getElementById('btnMoodHeart').addEventListener('click', () => {
+      robotState.mode = 'eyes';
+      robotState.mood = 'heart';
+      setActiveBtn('btnMoodHeart');
+      eilikSpeech.innerHTML = '💖 Tớ thương bạn nhiều lắm! Robot yêu người mà!';
+      sendSerialCommand('MOOD:HEART');
+    });
+
+    document.getElementById('btnMoodSleep').addEventListener('click', () => {
+      robotState.mode = 'eyes';
+      robotState.mood = 'sleep';
+      setActiveBtn('btnMoodSleep');
+      eilikSpeech.innerHTML = '😴 Zzzz... Tớ đang ngủ... đừng làm phiền nhé...';
+      sendSerialCommand('MOOD:SLEEP');
+    });
+
+    // =====================================================================
+    // VIRTUAL ROBOT — IR GESTURE SIMULATE BUTTON
+    // =====================================================================
+    const btnSimulateIR = document.getElementById('btnSimulateIR');
+    btnSimulateIR.addEventListener('click', () => {
+      robotState.irReaction = true;
+      robotState.irTimer = 90;
+      robotState.mode = 'eyes';
+      eilikSpeech.innerHTML = '👋 Phát hiện vật thể trước cảm biến IR! Mắt robot đang phản ứng! 🤩';
+      btnSimulateIR.style.borderColor = '#00f0ff';
+      btnSimulateIR.style.color = '#00f0ff';
+      setTimeout(() => {
+        btnSimulateIR.style.borderColor = '';
+        btnSimulateIR.style.color = '';
+      }, 2000);
+      sendSerialCommand('IR:TRIGGER');
+      addLog('[IR] Đã kích hoạt giả lập cảm biến hồng ngoại (IR Test)', 'info');
+    });
+
+    // =====================================================================
+    // VIRTUAL ROBOT — PAN/TILT D-PAD GIMBAL CONTROL
+    // =====================================================================
+    const PAN_STEP = 10, TILT_STEP = 10;
+    const PAN_MAX = 90, TILT_MAX = 45;
+
+    function updateHeadAngleDisplay() {
+      dispHeadAngle.textContent = `${robotState.panAngle}°, ${robotState.tiltAngle}°`;
+    }
+
+    document.getElementById('btnHeadUp').addEventListener('click', () => {
+      robotState.tiltAngle = Math.max(-TILT_MAX, robotState.tiltAngle - TILT_STEP);
+      updateHeadAngleDisplay();
+      sendSerialCommand(`TILT:${robotState.tiltAngle}`);
+    });
+    document.getElementById('btnHeadLeft').addEventListener('click', () => {
+      robotState.panAngle = Math.max(-PAN_MAX, robotState.panAngle - PAN_STEP);
+      updateHeadAngleDisplay();
+      sendSerialCommand(`PAN:${robotState.panAngle}`);
+    });
+    document.getElementById('btnHeadRight').addEventListener('click', () => {
+      robotState.panAngle = Math.min(PAN_MAX, robotState.panAngle + PAN_STEP);
+      updateHeadAngleDisplay();
+      sendSerialCommand(`PAN:${robotState.panAngle}`);
+    });
+    document.getElementById('btnHeadCenter').addEventListener('click', () => {
+      robotState.panAngle = 0;
+      robotState.tiltAngle = 0;
+      updateHeadAngleDisplay();
+      sendSerialCommand('PAN:0');
+      sendSerialCommand('TILT:0');
+    });
+
+    // =====================================================================
+    // VIRTUAL ROBOT — SYNC EAR RINGS WITH CONNECTION STATE
+    // =====================================================================
+    function syncRobotEars() {
+      if (isConnected) {
+        earLeft.classList.add('connected');
+        earRight.classList.add('connected');
+        earLeft.classList.remove('flashing');
+        earRight.classList.remove('flashing');
+      } else {
+        earLeft.classList.remove('connected', 'flashing');
+        earRight.classList.remove('connected', 'flashing');
+      }
+    }
+
+    // Hook into existing connect/disconnect flow
+    const origBtnConnectClick = btnConnect.onclick;
+    const connectObserver = new MutationObserver(() => {
+      syncRobotEars();
+    });
+    connectObserver.observe(btnConnect, { attributeFilter: ['class'] });
+
+    // Flash mode ears: flash amber during firmware flash
+    const origFlashClick = btnFlash.onclick;
+    new MutationObserver(() => {
+      if (btnFlash.disabled) {
+        earLeft.classList.add('flashing');
+        earRight.classList.add('flashing');
+      } else {
+        syncRobotEars();
+      }
+    }).observe(btnFlash, { attributeFilter: ['disabled'] });
 
     // Language Toggle
     const btnLangToggle = document.getElementById('btnLangToggle');

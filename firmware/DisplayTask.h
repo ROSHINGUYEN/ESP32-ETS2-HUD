@@ -66,6 +66,11 @@ public:
   // Trigger từ IR — chuyển sang EYES, đặt lại timeout
   void   notifyPresence();
 
+  // Set thời gian & ngày
+  void   setTime(int hr, int min, int sec, int mday, int mon, int yr, int wday);
+  // Set thông tin thời tiết
+  void   setWeather(float temp, float humi, const char* condition);
+
   // Set stats cho weather dashboard
   void   setStats(float pan, float tilt, const char* mood, const char* modeStr, int clients);
 
@@ -90,7 +95,7 @@ private:
 
   // Presence state
   unsigned long lastPresenceMs;
-  static constexpr unsigned long PRESENCE_TIMEOUT_MS = 8000;
+  static constexpr unsigned long PRESENCE_TIMEOUT_MS = 10000; // 10s idle → về Weather Clock
 
   // Stats snapshot
   float _pan;
@@ -99,12 +104,24 @@ private:
   char _modeStr[16];
   int _clients;
 
-  // Clock internal
+  // Clock & Weather State (Ảnh 1)
   unsigned long bootMs;
-  int prevClockMin;
+  unsigned long baseTimeSec;
+  float tempC;
+  float humidity;
+  char weatherCondition[16];
+  uint8_t trendBars[7];
+  unsigned long lastTrendUpdateMs;
 
   void   drawEyesFrame();
   void   drawStreamFrame();
   void   drawClockFrame();
   void   applyEmotionToRobo();
+
+  // Weather Station Graphics (Ảnh 1)
+  void   drawSunWithRays(int16_t cx, int16_t cy);
+  void   drawCloud(int16_t x, int16_t y);
+  void   drawTrendBars(int16_t startX, int16_t baseY);
+  void   drawDroplet(int16_t x, int16_t y);
+  void   drawThermometer(int16_t x, int16_t y);
 };

@@ -31,6 +31,7 @@ public:
 
   // Status
   bool    isCurrentlyActive() const { return isActiveFlag; }
+  bool    hasRecentMotion() const { return isActiveFlag || (millis() - lastChangeMs < 1500); }
   uint32_t eventCount() const { return eventCounter; }
 
 private:
