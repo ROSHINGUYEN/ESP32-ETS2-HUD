@@ -2,56 +2,214 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Eilik Web Serial Bridge</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIU EILIK - Web Serial Controller</title>
   <style>
-    body { font-family: monospace; background: #0a141d; color: #00ffe1; padding: 20px; }
-    button { background: #00ffe1; color: #000; font-weight: bold; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; }
-    pre { background: #000; padding: 12px; border: 1px solid #00ffe1; height: 300px; overflow-y: scroll; }
+    :root {
+      --bg-base: #070d18;
+      --bg-surface: #0e1a2d;
+      --bg-surface-glass: rgba(14, 26, 45, 0.85);
+      --neon-cyan: #00f0ff;
+      --neon-cyan-glow: rgba(0, 240, 255, 0.35);
+      --neon-purple: #9d4edd;
+      --accent-yellow: #ffd166;
+      --accent-green: #00ff88;
+      --accent-red: #ff3366;
+      --text-main: #f0f6fc;
+      --text-muted: #8ca3ba;
+      --border-cyan: rgba(0, 240, 255, 0.3);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(circle at 50% -10%, #172a48, var(--bg-base) 80%);
+      color: var(--text-main);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      background: var(--bg-surface-glass);
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-cyan);
+      border-radius: 24px;
+      box-shadow: 0 16px 45px rgba(0, 240, 255, 0.15);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+      padding-bottom: 16px;
+    }
+    .header h2 {
+      font-size: 18px;
+      letter-spacing: 1.5px;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 12px var(--neon-cyan-glow);
+    }
+
+    .btn {
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--neon-cyan), #0099cc);
+      color: #031520;
+      box-shadow: 0 4px 14px var(--neon-cyan-glow);
+    }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-danger {
+      background: rgba(255, 51, 102, 0.15);
+      border-color: var(--accent-red);
+      color: var(--accent-red);
+    }
+
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .btn-sub {
+      height: 44px;
+      font-size: 12px;
+      border-radius: 12px;
+      background: rgba(0, 240, 255, 0.08);
+      border: 1px solid var(--border-cyan);
+      color: var(--neon-cyan);
+    }
+    .btn-sub:hover { background: rgba(0, 240, 255, 0.18); }
+
+    .terminal {
+      background: #03060b;
+      border: 1px solid var(--border-cyan);
+      border-radius: 14px;
+      height: 280px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #a4f4ff;
+      overflow-y: auto;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
-  <h2>EILIK WEB SERIAL BRIDGE</h2>
-  <button id="btnConnect" onclick="connectSerial()">KẾT NỐI USB CDC</button>
-  <button onclick="sendCmd('{\"emotion\":1}')">HAPPY</button>
-  <button onclick="sendCmd('{\"gesture\":1}')">NOD YES</button>
-  <button onclick="sendCmd('{\"pan\":90,\"tilt\":90}')">CENTER</button>
+<div class="container">
+  <div class="header">
+    <h2>MIU EILIK - SERIAL CONTROLLER</h2>
+    <button class="btn btn-primary" id="btnConnect" onclick="connectSerial()">🔌 KẾT NỐI USB CDC</button>
+  </div>
 
-  <h3>NHẬT KÝ TELEMETRY:</h3>
-  <pre id="logBox"></pre>
+  <div style="font-size: 13px; color: var(--text-muted);">
+    Điều khiển cử chỉ & cảm xúc nhanh qua cổng USB Native CDC:
+  </div>
 
-  <script>
-    let port, writer, reader;
+  <div class="btn-grid">
+    <button class="btn btn-sub" onclick="sendCmd('{\"emotion\":1}')">😊 HAPPY</button>
+    <button class="btn btn-sub" onclick="sendCmd('{\"emotion\":2}')">😡 ANGRY</button>
+    <button class="btn btn-sub" onclick="sendCmd('{\"emotion\":3}')">😴 SLEEPY</button>
+    <button class="btn btn-sub" onclick="sendCmd('{\"gesture\":1}')">👍 NOD YES</button>
+    <button class="btn btn-sub" onclick="sendCmd('{\"gesture\":2}')">👎 SHAKE NO</button>
+    <button class="btn btn-sub" onclick="sendCmd('{\"pan\":90,\"tilt\":90}')">🎯 CENTER</button>
+  </div>
 
-    async function connectSerial() {
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+    <span style="font-size: 12px; font-weight: 700; color: var(--neon-cyan);">NHẬT KÝ TELEMETRY:</span>
+    <button class="btn btn-sub" style="height:28px; padding: 0 10px; font-size:11px;" onclick="clearLog()">XÓA LOG</button>
+  </div>
+
+  <div class="terminal" id="logBox">[HỆ THỐNG] Nhấn 'KẾT NỐI USB CDC' để bắt đầu giao tiếp...</div>
+</div>
+
+<script>
+  let port, writer, reader;
+
+  async function connectSerial() {
+    if (port) {
       try {
-        port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 115200 });
-        document.getElementById('btnConnect').innerText = 'ĐÃ KẾT NỐI!';
-        writer = port.writable.getWriter();
-        readLoop();
-      } catch (e) {
-        alert('Lỗi kết nối: ' + e);
-      }
+        if (reader) await reader.cancel();
+        await port.close();
+      } catch(e) {}
+      port = null;
+      document.getElementById('btnConnect').innerText = '🔌 KẾT NỐI USB CDC';
+      document.getElementById('btnConnect').classList.replace('btn-danger', 'btn-primary');
+      log("Đã ngắt kết nối.");
+      return;
     }
 
-    async function readLoop() {
-      reader = port.readable.getReader();
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      document.getElementById('btnConnect').innerText = '🔌 NGẮT KẾT NỐI';
+      document.getElementById('btnConnect').classList.replace('btn-primary', 'btn-danger');
+      writer = port.writable.getWriter();
+      log("Kết nối thành công cổng Serial!");
+      readLoop();
+    } catch (e) {
+      alert('Lỗi kết nối Serial: ' + e.message);
+    }
+  }
+
+  async function readLoop() {
+    const textDecoder = new TextDecoderStream();
+    port.readable.pipeTo(textDecoder.writable);
+    reader = textDecoder.readable.getReader();
+    try {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        if (value) {
-          const text = new TextDecoder().decode(value);
-          document.getElementById('logBox').innerText += text;
-        }
+        if (value) log(value);
       }
+    } catch(err) {
+      log("[NGẮT] " + err.message);
     }
+  }
 
-    async function sendCmd(jsonStr) {
-      if (!writer) return;
-      const enc = new TextEncoder().encode(jsonStr);
-      // Gói tin CMD
-      await writer.write(enc);
+  async function sendCmd(jsonStr) {
+    if (!writer) {
+      alert("Vui lòng bấm 'KẾT NỐI USB CDC' trước!");
+      return;
     }
-  </script>
+    const enc = new TextEncoder().encode(jsonStr + "\n");
+    await writer.write(enc);
+    log("> GỬI: " + jsonStr);
+  }
+
+  function log(msg) {
+    const box = document.getElementById('logBox');
+    box.innerText += (box.innerText ? "\n" : "") + msg;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function clearLog() {
+    document.getElementById('logBox').innerText = "";
+  }
+</script>
 </body>
 </html>
