@@ -1,137 +1,1628 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MIU EILIK - PORTAL SUITE</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="page-title">MIU EILIK — ESP32-S3 Web Flasher & Robot Suite</title>
+  <meta name="description" id="page-desc" content="Công cụ nạp firmware ESP32-S3 trực tuyến và điều khiển Robot để bàn MIU Eilik qua Web Serial API. Không cần cài đặt phần mềm." />
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+
+  <!-- CryptoJS for MD5 verification -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
   <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     :root {
-      --bg-base: #060a12;
-      --neon-cyan: #00f0ff;
-      --neon-cyan-glow: rgba(0, 240, 255, 0.4);
-      --neon-purple: #a855f7;
-      --border-cyan: rgba(0, 240, 255, 0.25);
+      --bg: #0a0f1e;
+      --bg-card: #0d1630;
+      --border: rgba(100, 255, 218, 0.12);
+      --border-dim: rgba(255, 255, 255, 0.06);
+      --accent: #64ffda;
+      --accent-dim: rgba(100, 255, 218, 0.15);
+      --accent-glow: rgba(100, 255, 218, 0.25);
+      --text: #ccd6f6;
+      --text-muted: #8892b0;
+      --text-dim: #4a5568;
+      --red: #ff6b6b;
+      --yellow: #ffd166;
+      --blue: #74b9ff;
+      --purple: #bb86fc;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', system-ui, -apple-system, sans-serif;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
     body {
-      background: radial-gradient(circle at 50% -10%, #172a48, var(--bg-base) 80%);
-      color: #f0f6fc;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .portal-card {
-      width: 100%;
-      max-width: 520px;
-      background: rgba(13, 22, 38, 0.85);
-      border: 1px solid var(--border-cyan);
-      border-radius: 28px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px var(--neon-cyan-glow);
-      backdrop-filter: blur(20px);
-      padding: 32px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      text-align: center;
-    }
-    .badge {
-      display: inline-block;
-      align-self: center;
-      padding: 4px 14px;
-      border-radius: 20px;
-      background: rgba(0, 240, 255, 0.12);
-      border: 1px solid var(--neon-cyan);
-      color: var(--neon-cyan);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1px;
-    }
-    h1 {
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: 2px;
-      color: #fff;
-      text-shadow: 0 0 16px var(--neon-cyan-glow);
-    }
-    p {
-      font-size: 13px;
-      color: #8da2bb;
+      font-family: var(--sans);
+      background-color: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
       line-height: 1.6;
     }
-    .links-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-top: 8px;
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
     }
-    .tool-link {
+
+    /* ── NAVBAR ── */
+    #navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
-      border-radius: 16px;
-      background: rgba(0, 240, 255, 0.05);
-      border: 1px solid var(--border-cyan);
-      color: #fff;
-      text-decoration: none;
+      padding: 0 5vw;
+      height: 64px;
+      background: rgba(10, 15, 30, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-dim);
+    }
+
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 1.15rem;
       font-weight: 700;
-      font-size: 14px;
-      transition: all 0.2s ease;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .tool-link:hover {
-      background: rgba(0, 240, 255, 0.15);
-      border-color: var(--neon-cyan);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px var(--neon-cyan-glow);
+    .nav-logo span { color: var(--text-muted); }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-    .tool-link .desc {
-      font-size: 11px;
-      font-weight: 400;
-      color: #8da2bb;
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      letter-spacing: 0.08em;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.active {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .nav-links a span {
+      color: var(--accent);
+      margin-right: 2px;
+    }
+
+    /* Language Switcher */
+    .lang-switcher { position: relative; }
+    .lang-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-dim);
+      border-radius: 7px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lang-btn:hover {
+      color: var(--accent);
+      border-color: rgba(100, 255, 218, 0.3);
+      background: var(--accent-dim);
+    }
+    .lang-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: #0d1630;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      min-width: 140px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      z-index: 200;
+    }
+    .lang-switcher.open .lang-dropdown { display: block; }
+    .lang-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .lang-option:hover, .lang-option.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* ── HERO SECTION ── */
+    #hero {
+      min-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 120px 5vw 60px;
+      position: relative;
+    }
+    .hero-grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(100, 255, 218, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 255, 218, 0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    }
+    .hero-glow {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 650px;
+      height: 420px;
+      background: radial-gradient(ellipse, rgba(100, 255, 218, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: relative;
+      max-width: 840px;
+      z-index: 1;
+    }
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hero-eyebrow::after {
+      content: '';
       display: block;
+      width: 60px;
+      height: 1px;
+      background: var(--accent);
+      opacity: 0.5;
+    }
+    .hero-title {
+      font-size: clamp(2.4rem, 6vw, 4.4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 24px;
+    }
+    .hero-title .highlight { color: var(--accent); }
+    .hero-title .dim { color: var(--text-muted); }
+    .hero-desc {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      line-height: 1.75;
+      margin-bottom: 40px;
+    }
+    .hero-cta {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 12px 28px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(100, 255, 218, 0.35);
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary:hover {
+      background: rgba(100, 255, 218, 0.22);
+      box-shadow: 0 0 24px rgba(100, 255, 218, 0.25);
+      transform: translateY(-2px);
+    }
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      padding: 12px 28px;
+      color: var(--text-muted);
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-ghost:hover {
+      color: var(--text);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 40px;
+      margin-top: 60px;
+      padding-top: 30px;
+      border-top: 1px solid var(--border-dim);
+      flex-wrap: wrap;
+    }
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
       margin-top: 2px;
+      letter-spacing: 0.05em;
     }
-    .tool-link.primary {
-      background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(168, 85, 247, 0.2));
-      border-color: var(--neon-cyan);
+
+    /* ── SECTIONS COMMON ── */
+    section {
+      padding: 90px 5vw;
+      position: relative;
     }
+    .section-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      letter-spacing: 0.2em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-label::before {
+      content: attr(data-num);
+      color: var(--accent);
+      opacity: 0.5;
+    }
+    .section-title {
+      font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    .section-title .accent { color: var(--accent); }
+    .section-desc {
+      font-size: 0.98rem;
+      color: var(--text-muted);
+      max-width: 620px;
+      margin-bottom: 50px;
+      line-height: 1.7;
+    }
+    .section-divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-dim), transparent);
+    }
+
+    /* ── FLASH & CONSOLE SECTION ── */
+    .flash-layout {
+      display: flex;
+      gap: 24px;
+      align-items: stretch;
+    }
+    @media (max-width: 960px) {
+      .flash-layout { flex-direction: column; }
+    }
+
+    .flash-panel {
+      flex: 1 1 0%;
+      min-width: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+    .flash-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.5;
+    }
+    .panel-title {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-title .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    .fw-mode-tabs {
+      display: flex;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border-dim);
+    }
+    .fw-mode-tab {
+      flex: 1;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      letter-spacing: 0.06em;
+      padding: 10px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.2s;
+      border: none;
+      background: none;
+    }
+    .fw-mode-tab.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(100, 255, 218, 0.25);
+    }
+
+    .field-group { margin-bottom: 20px; }
+    .field-label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .field-select {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 0.88rem;
+      font-family: var(--sans);
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      outline: none;
+      cursor: pointer;
+    }
+    .field-select:focus { border-color: var(--accent); }
+    .field-select option { background: #0d1630; color: var(--text); }
+
+    .field-upload {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 20px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1.5px dashed rgba(100, 255, 218, 0.25);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .field-upload:hover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .field-upload input[type="file"] { display: none; }
+    .field-upload svg { width: 22px; height: 22px; color: var(--accent); flex-shrink: 0; }
+    .field-upload-text { font-size: 0.85rem; color: var(--text-muted); }
+    .field-upload-text strong { display: block; color: var(--text); margin-bottom: 2px; }
+
+    .file-selected-name {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+      padding: 8px 12px;
+      background: var(--accent-dim);
+      border-radius: 6px;
+      margin-top: 10px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      word-break: break-all;
+    }
+
+    .update-notes {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      padding: 14px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .update-notes .note-tag { color: var(--accent); font-weight: 600; }
+
+    /* Flash Progress */
+    .flash-progress-wrap {
+      display: none;
+      margin-top: 16px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border-dim);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .flash-progress-wrap.active { display: block; }
+    .flash-progress-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .flash-progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .flash-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), #4de8c2);
+      border-radius: 4px;
+      transition: width 0.2s ease;
+      box-shadow: 0 0 10px rgba(100,255,218,0.4);
+    }
+
+    /* Connection Bar & Buttons */
+    .conn-status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      margin-top: 20px;
+      margin-bottom: 14px;
+    }
+    .conn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+    .conn-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 6px var(--red);
+    }
+    .conn-indicator.connected { color: var(--accent); }
+    .conn-indicator.connected .conn-dot {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 14px 24px;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: none;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+    .btn-connect {
+      color: var(--accent);
+      background: rgba(100, 255, 218, 0.08);
+      border: 1.5px solid rgba(100, 255, 218, 0.4) !important;
+    }
+    .btn-connect:hover {
+      background: rgba(100, 255, 218, 0.18);
+      box-shadow: 0 0 20px rgba(100, 255, 218, 0.2);
+    }
+    .btn-disconnect {
+      color: var(--red);
+      background: rgba(255, 107, 107, 0.08);
+      border: 1.5px solid rgba(255, 107, 107, 0.35) !important;
+    }
+    .btn-disconnect:hover {
+      background: rgba(255, 107, 107, 0.2);
+      box-shadow: 0 0 20px rgba(255, 107, 107, 0.2);
+    }
+    .btn-flash-device {
+      color: #0a0f1e;
+      background: var(--accent);
+      border: 1.5px solid var(--accent) !important;
+      margin-bottom: 0;
+    }
+    .btn-flash-device:hover {
+      background: #4de8c2;
+      box-shadow: 0 0 28px rgba(100, 255, 218, 0.35);
+    }
+    .btn-flash-device:disabled {
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border-dim) !important;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* ── CONSOLE PANEL ── */
+    .console-panel {
+      display: flex;
+      flex-direction: column;
+    }
+    .console-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .console-btn {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      padding: 5px 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-dim);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .console-btn:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.15); }
+    .console-btn.active { color: var(--accent); border-color: rgba(100, 255, 218, 0.3); }
+
+    .console-log-wrapper {
+      position: relative;
+      flex: 1;
+      min-height: 280px;
+    }
+    .console-log {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid var(--border-dim);
+      border-radius: 10px;
+      padding: 16px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      line-height: 1.7;
+      color: var(--text-muted);
+    }
+    .log-line { padding: 1px 0; }
+    .log-line .ts { color: var(--text-dim); margin-right: 8px; }
+    .log-line.info { color: #74b9ff; }
+    .log-line.success { color: var(--accent); }
+    .log-line.error { color: var(--red); font-weight: 600; }
+    .log-line.warn { color: var(--yellow); }
+    .log-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 13px;
+      background: var(--accent);
+      vertical-align: middle;
+      animation: blink 1.2s step-end infinite;
+      margin-left: 2px;
+    }
+    @keyframes blink { 0%, 100% { opacity: 0.7; } 50% { opacity: 0; } }
+
+    /* ── FIRMWARE LIBRARY SECTION ── */
+    #fw { background: rgba(13, 22, 48, 0.4); }
+    .fw-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .fw-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 14px;
+      padding: 28px;
+      transition: all 0.25s;
+    }
+    .fw-card:hover {
+      border-color: rgba(100, 255, 218, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35);
+    }
+    .fw-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .fw-badge {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+    .fw-badge.stable {
+      color: var(--accent);
+      border: 1px solid rgba(100, 255, 218, 0.3);
+      background: var(--accent-dim);
+    }
+    .fw-badge.beta {
+      color: var(--yellow);
+      border: 1px solid rgba(255, 209, 102, 0.3);
+      background: rgba(255, 209, 102, 0.08);
+    }
+    .fw-card-name { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .fw-card-desc { font-size: 0.84rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 18px; }
+    .fw-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .fw-tag {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-dim);
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .fw-card-footer {
+      padding-top: 14px;
+      border-top: 1px solid var(--border-dim);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ── ROBOT LIVE CONTROLLER SECTION ── */
+    #controller { background: var(--bg); }
+    .controller-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 800px) {
+      .controller-grid { grid-template-columns: 1fr; }
+    }
+    .dpad-box {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 54px);
+      gap: 10px;
+      max-width: 250px;
+      margin: 20px auto;
+    }
+    .ctrl-btn {
+      border: none;
+      border-radius: 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      background: rgba(100, 255, 218, 0.1);
+      border: 1px solid rgba(100, 255, 218, 0.3);
+      color: var(--accent);
+      transition: all 0.15s;
+    }
+    .ctrl-btn:hover { background: var(--accent); color: #0a0f1e; }
+    .ctrl-btn:active { transform: scale(0.94); }
+
+    /* ── TUTORIAL SECTION ── */
+    #tutorial { background: rgba(13, 22, 48, 0.5); }
+    .tutorial-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .tut-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 14px;
+      padding: 26px;
+      transition: all 0.2s;
+    }
+    .tut-card:hover {
+      border-color: rgba(100, 255, 218, 0.25);
+      transform: translateY(-2px);
+    }
+    .tut-step-num {
+      font-family: var(--mono);
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--accent);
+      opacity: 0.2;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+    .tut-card-title { font-size: 0.98rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .tut-card-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; }
+
+    /* Footer */
+    footer {
+      padding: 40px 5vw;
+      border-top: 1px solid var(--border-dim);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+    footer span { color: var(--accent); }
+    .footer-links { display: flex; gap: 18px; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; }
+    .footer-links a:hover { color: var(--accent); }
   </style>
 </head>
 <body>
-  <div class="portal-card">
-    <div class="badge">MIU EILIK ESP32-S3 v2.0</div>
-    <h1>WEB PORTAL SUITE</h1>
-    <p>Chọn công cụ web bạn muốn khởi chạy trực tiếp trên trình duyệt:</p>
 
-    <div class="links-grid">
-      <a href="pc_tools/miu_web_flasher.html" class="tool-link primary">
-        <div style="text-align: left;">
-          <div>🚀 Web Flasher & Diagnostic Suite</div>
-          <span class="desc">Nạp code trực tiếp từ trình duyệt, gỡ lỗi & xem log Realtime</span>
-        </div>
-        <span>➜</span>
-      </a>
+  <!-- Top Navbar -->
+  <nav id="navbar">
+    <a href="#" class="nav-logo">
+      ⚡ MIU<span>_EILIK.</span>
+    </a>
+    <div class="nav-right">
+      <ul class="nav-links">
+        <li><a href="#flash" id="nav-flash"><span>01.</span> <span data-i18n="nav_flash">FLASH</span></a></li>
+        <li><a href="#fw" id="nav-fw"><span>02.</span> <span data-i18n="nav_fw">FIRMWARE</span></a></li>
+        <li><a href="#controller" id="nav-ctrl"><span>03.</span> <span data-i18n="nav_ctrl">CONTROLLER</span></a></li>
+        <li><a href="#tutorial" id="nav-tut"><span>04.</span> <span data-i18n="nav_tut">TUTORIAL</span></a></li>
+      </ul>
 
-      <a href="data/index.html" class="tool-link">
-        <div style="text-align: left;">
-          <div>🤖 Robot Web Controller UI</div>
-          <span class="desc">Giao diện điều khiển cảm xúc, đầu Pan/Tilt & phát nhạc</span>
+      <!-- Language Selector -->
+      <div class="lang-switcher" id="langSwitcher">
+        <button class="lang-btn" id="langBtn">
+          <span id="langFlag">🇻🇳</span>
+          <span id="langCode">VI</span>
+        </button>
+        <div class="lang-dropdown">
+          <button class="lang-option" data-lang="vi"><span>🇻🇳</span> Tiếng Việt</button>
+          <button class="lang-option" data-lang="en"><span>🇬🇧</span> English</button>
         </div>
-        <span>➜</span>
-      </a>
-
-      <a href="pc_tools/web_bridge.html" class="tool-link">
-        <div style="text-align: left;">
-          <div>⚡ Web Serial Quick Bridge</div>
-          <span class="desc">Công cụ điều khiển nhanh qua cổng USB Native CDC</span>
-        </div>
-        <span>➜</span>
-      </a>
+      </div>
     </div>
-  </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section id="hero">
+    <div class="hero-grid-bg"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">
+        <span>ESP32-S3 ROBOT COMPANION PLATFORM</span>
+      </div>
+      <h1 class="hero-title">
+        <span data-i18n="hero_title_1">Flash &amp; Control</span><br/>
+        <span class="highlight">MIU EILIK</span> <span class="dim" data-i18n="hero_title_2">Online</span>
+      </h1>
+      <p class="hero-desc" data-i18n="hero_desc">
+        Công cụ nạp firmware ESP32-S3 trực tuyến và điều khiển robot MIU Eilik — không cần cài đặt Arduino IDE. Hỗ trợ nạp 1-click bản dựng có sẵn hoặc tải lên file <code>.bin</code> tùy chỉnh của riêng bạn qua Web Serial API.
+      </p>
+      <div class="hero-cta">
+        <a href="#flash" class="btn-primary" data-i18n="hero_cta_flash">⚡ Bắt đầu Flash Ngay</a>
+        <a href="#controller" class="btn-ghost" data-i18n="hero_cta_ctrl">🎮 Điều khiển Robot</a>
+      </div>
+
+      <div class="hero-stats">
+        <div>
+          <div class="stat-value">ESP32-S3</div>
+          <div class="stat-label">CHIP TARGET (N16R8)</div>
+        </div>
+        <div>
+          <div class="stat-value">921,600</div>
+          <div class="stat-label">MAX FLASH BAUD</div>
+        </div>
+        <div>
+          <div class="stat-value">30 FPS</div>
+          <div class="stat-label">ROBOEYES OLED</div>
+        </div>
+        <div>
+          <div class="stat-value">50 Hz</div>
+          <div class="stat-label">SMOOTHSTEP SERVO</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ─────────────── FLASH SECTION ─────────────── -->
+  <section id="flash">
+    <div class="section-inner">
+      <p class="section-label" data-num="01.">ONLINE FLASH TOOL</p>
+      <h2 class="section-title"><span data-i18n="flash_title_1">Nạp Firmware</span> <span class="accent" data-i18n="flash_title_2">Trực Tiếp Trên Web</span></h2>
+      <p class="section-desc" data-i18n="flash_desc">
+        Kết nối cổng USB của ESP32-S3 và chọn phiên bản firmware. Hỗ trợ nạp bản dựng có sẵn hoặc kéo thả file <code>.bin</code> đã biên dịch.
+      </p>
+
+      <div class="flash-layout">
+        <!-- Left: Configuration Panel -->
+        <div class="flash-panel">
+          <div class="panel-title">
+            <span class="dot"></span>
+            <span data-i18n="panel_cfg">CẤU HÌNH NẠP FIRMWARE</span>
+          </div>
+
+          <!-- Mode Tabs -->
+          <div class="fw-mode-tabs">
+            <button class="fw-mode-tab active" data-mode="preset" id="tabPreset">📦 FW CÓ SẴN (PRESET)</button>
+            <button class="fw-mode-tab" data-mode="upload" id="tabUpload">⚡ UPLOAD FILE .BIN</button>
+          </div>
+
+          <!-- Preset Selector -->
+          <div id="mode-preset">
+            <div class="field-group">
+              <label class="field-label" data-i18n="label_fw_version">PHIÊN BẢN FIRMWARE</label>
+              <select class="field-select" id="fwSelect">
+                <option value="preset_v20">MIU EILIK v2.0 (Dual-Core FreeRTOS + Smoothstep + Biquad Audio)</option>
+                <option value="preset_v19">MIU EILIK v1.9 Stable (All-in-One Firmware)</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label" data-i18n="label_release_notes">GHI CHÚ PHIÊN BẢN</label>
+              <div class="update-notes">
+                <div class="note-tag">✓ Đa nhân đối xứng FreeRTOS: Core 0 (Audio/Web/USB) &amp; Core 1 (Display/Servo/Brain)</div>
+                <div>✓ Thuật toán Servo Smoothstep S-curve $3t^2 - 2t^3$ triệt tiêu rung lắc</div>
+                <div>✓ Buffer âm thanh I2S 512 samples — Zero Underrun</div>
+                <div>✓ Bộ lọc Biquad IIR 8 dải tần số + Beat Detection thực thụ</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom Upload Mode -->
+          <div id="mode-upload" style="display: none;">
+            <div class="field-group">
+              <label class="field-label" data-i18n="label_upload_file">CHỌN TỆP BIN BIÊN DỊCH (.BIN)</label>
+              <label class="field-upload" for="binFileInput">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <div class="field-upload-text">
+                  <strong data-i18n="upload_title">Chọn file firmware (.bin)</strong>
+                  <span data-i18n="upload_hint">Bấm hoặc kéo thả tệp miu_eilik.ino.bin vào đây</span>
+                </div>
+                <input type="file" id="binFileInput" accept=".bin" />
+              </label>
+              <div class="file-selected-name" id="fileSelectedName">
+                <span>📄</span> <span id="fileNameText">filename.bin</span>
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" data-i18n="label_flash_offset">ĐỊA CHỈ OFFSET FLASH (HEX)</label>
+              <input type="text" class="field-select" id="flashOffset" value="0x10000" style="font-family: var(--mono);" />
+            </div>
+          </div>
+
+          <!-- Baud Rate -->
+          <div class="field-group">
+            <label class="field-label">TỐC ĐỘ BAUD NẠP (FLASH BAUD)</label>
+            <select class="field-select" id="baudSelect">
+              <option value="921600" selected>921,600 (Siêu tốc độ - Khuyến nghị)</option>
+              <option value="460800">460,800 (Chuẩn)</option>
+              <option value="115200">115,200 (An toàn)</option>
+            </select>
+          </div>
+
+          <!-- Flash Progress Bar -->
+          <div class="flash-progress-wrap" id="flashProgressWrap">
+            <div class="flash-progress-label">
+              <span id="flashStatusText">Đang ghi flash...</span>
+              <span id="flashPercentText">0%</span>
+            </div>
+            <div class="flash-progress-bar">
+              <div class="flash-progress-fill" id="flashProgressFill"></div>
+            </div>
+          </div>
+
+          <!-- Connection Bar -->
+          <div class="conn-status-bar">
+            <div class="conn-indicator" id="connIndicator">
+              <div class="conn-dot"></div>
+              <span id="connLabel" data-i18n="conn_disconnected">ĐÃ NGẮT</span>
+            </div>
+            <span style="font-family: var(--mono); font-size: 0.68rem; color: var(--text-dim);">WEB SERIAL CDC</span>
+          </div>
+
+          <!-- Buttons -->
+          <button class="action-btn btn-connect" id="btnConnect">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span id="btnConnectText" data-i18n="btn_connect">KẾT NỐI CỔNG SERIAL</span>
+          </button>
+
+          <button class="action-btn btn-flash-device" id="btnFlash" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span data-i18n="btn_flash">BẮT ĐẦU GHI FIRMWARE</span>
+          </button>
+        </div>
+
+        <!-- Right: Real-time Serial Console -->
+        <div class="flash-panel console-panel">
+          <div class="panel-title">
+            <span class="dot"></span>
+            <span>REAL-TIME SERIAL CONSOLE &amp; TELEMETRY</span>
+          </div>
+
+          <div class="console-toolbar">
+            <button class="console-btn active" id="btnAutoscroll" data-i18n="btn_autoscroll">Tự cuộn</button>
+            <button class="console-btn" id="btnTimestamp" data-i18n="btn_timestamp">Thời gian</button>
+            <button class="console-btn" id="btnClearLog" data-i18n="btn_clear">Xóa Log</button>
+          </div>
+
+          <div class="console-log-wrapper">
+            <div class="console-log" id="consoleLog">
+              <div class="log-line info">[ SYS ] Khởi tạo Web Serial Console Suite...</div>
+              <div class="log-line">[ SYS ] Chờ người dùng bấm "KẾT NỐI CỔNG SERIAL"...<span class="log-cursor"></span></div>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px; display: flex; gap: 8px;">
+            <input type="text" id="consoleInput" placeholder="Gửi lệnh JSON (vd: {&quot;emotion&quot;:1}) hoặc text..." class="field-select" style="flex: 1;" onkeypress="if(event.key==='Enter') sendCmd()" />
+            <button class="btn-primary" style="padding: 0 18px;" onclick="sendCmd()">GỬI</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ─────────────── ROBOT CONTROLLER ─────────────── -->
+  <section id="controller">
+    <div class="section-inner">
+      <p class="section-label" data-num="02.">LIVE ROBOT CONTROLLER</p>
+      <h2 class="section-title"><span data-i18n="ctrl_title_1">Bảng Điều Khiển</span> <span class="accent" data-i18n="ctrl_title_2">Robot Thời Gian Thực</span></h2>
+      <p class="section-desc" data-i18n="ctrl_desc">
+        Điều khiển tức thì cử động đầu Pan/Tilt, kích hoạt cảm xúc mắt OLED và kiểm tra âm thanh trực tiếp qua kết nối Web Serial.
+      </p>
+
+      <div class="controller-grid">
+        <!-- D-Pad Head Control -->
+        <div class="flash-panel">
+          <div class="panel-title"><span class="dot"></span> ĐIỀU KHIỂN CỔ &amp; ĐẦU (PAN / TILT)</div>
+          <div class="dpad-box">
+            <div></div>
+            <button class="ctrl-btn" onclick="sendJsonCmd({tilt: 82})">▲ NGẨNG</button>
+            <div></div>
+            <button class="ctrl-btn" onclick="sendJsonCmd({pan: 65})">◀ TRÁI</button>
+            <button class="ctrl-btn" style="background: var(--accent); color: #0a0f1e;" onclick="sendJsonCmd({pan: 90, tilt: 90})">● GIỮA</button>
+            <button class="ctrl-btn" onclick="sendJsonCmd({pan: 115})">PHẢI ▶</button>
+            <div></div>
+            <button class="ctrl-btn" onclick="sendJsonCmd({tilt: 104})">▼ CÚI</button>
+            <div></div>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: center; margin-top: 10px;">
+            <button class="ctrl-btn" style="padding: 10px 14px;" onclick="sendJsonCmd({gesture: 1})">GẬT ĐẦU (YES)</button>
+            <button class="ctrl-btn" style="padding: 10px 14px;" onclick="sendJsonCmd({gesture: 2})">LẮC ĐẦU (NO)</button>
+            <button class="ctrl-btn" style="padding: 10px 14px;" onclick="sendJsonCmd({gesture: 6})">VUI VẺ NHÚN</button>
+          </div>
+        </div>
+
+        <!-- Emotion & Music -->
+        <div class="flash-panel">
+          <div class="panel-title"><span class="dot"></span> KÍCH HOẠT CẢM XÚC &amp; MẮT SÓNG</div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px;">
+            <button class="ctrl-btn" style="padding: 14px;" onclick="sendJsonCmd({emotion: 1})">😊 HAPPY (VUI VẺ)</button>
+            <button class="ctrl-btn" style="padding: 14px;" onclick="sendJsonCmd({emotion: 2})">😡 ANGRY (GIẬN)</button>
+            <button class="ctrl-btn" style="padding: 14px;" onclick="sendJsonCmd({emotion: 3})">😴 SLEEPY (NGỦ)</button>
+            <button class="ctrl-btn" style="padding: 14px;" onclick="sendJsonCmd({emotion: 4})">🧐 CURIOUS (TÒ MÒ)</button>
+            <button class="ctrl-btn" style="padding: 14px;" onclick="sendJsonCmd({emotion: 5})">😵 CONFUSED (BỐI RỐI)</button>
+            <button class="ctrl-btn" style="padding: 14px;" onclick="sendJsonCmd({emotion: 0})">😐 NEUTRAL (THƯỜNG)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ─────────────── FIRMWARE SECTION ─────────────── -->
+  <section id="fw">
+    <div class="section-inner">
+      <p class="section-label" data-num="03.">FIRMWARE LIBRARY</p>
+      <h2 class="section-title"><span data-i18n="fw_title_1">Kho Firmware</span> <span class="accent" data-i18n="fw_title_2">Chính Thức</span></h2>
+      <p class="section-desc" data-i18n="fw_desc">
+        Các bản phát hành chính thức của MIU Eilik ESP32-S3. Tối ưu hóa chuyển động servo và chất lượng âm thanh I2S.
+      </p>
+
+      <div class="fw-grid">
+        <!-- Card 1: v2.0 -->
+        <div class="fw-card">
+          <div class="fw-card-header">
+            <span class="fw-badge stable">STABLE v2.0</span>
+          </div>
+          <div class="fw-card-name">MIU EILIK Pro Dual-Core</div>
+          <div class="fw-card-desc">
+            Bản firmware tối ưu toàn diện: Smoothstep S-curve chống rung servo, bộ lọc Biquad IIR 8 dải, I2S buffer 512 samples zero underrun, cảm biến hồng ngoại kép nhận diện vẫy tay (Swipe).
+          </div>
+          <div class="fw-tags">
+            <span class="fw-tag">FreeRTOS 2 Core</span>
+            <span class="fw-tag">Smoothstep</span>
+            <span class="fw-tag">Biquad IIR</span>
+            <span class="fw-tag">OLED 30FPS</span>
+          </div>
+          <div class="fw-card-footer">
+            <span style="font-family: var(--mono); font-size: 0.72rem; color: var(--text-dim);">Flash: 16MB N16R8</span>
+            <a href="#flash" class="btn-primary" style="padding: 6px 14px; font-size: 0.72rem;">NẠP BẢN NÀY ➜</a>
+          </div>
+        </div>
+
+        <!-- Card 2: v1.9 -->
+        <div class="fw-card">
+          <div class="fw-card-header">
+            <span class="fw-badge beta">LEGACY v1.9</span>
+          </div>
+          <div class="fw-card-name">MIU EILIK All-in-One Classic</div>
+          <div class="fw-card-desc">
+            Phiên bản nhúng 1 file duy nhất với Web UI Glassmorphism Neon xanh, phát nhạc LittleFS, mắt biểu cảm RoboEyes cơ bản.
+          </div>
+          <div class="fw-tags">
+            <span class="fw-tag">Single File</span>
+            <span class="fw-tag">RoboEyes</span>
+            <span class="fw-tag">SoftAP Web</span>
+          </div>
+          <div class="fw-card-footer">
+            <span style="font-family: var(--mono); font-size: 0.72rem; color: var(--text-dim);">Flash: 16MB</span>
+            <a href="#flash" class="btn-primary" style="padding: 6px 14px; font-size: 0.72rem;">NẠP BẢN NÀY ➜</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ─────────────── TUTORIAL SECTION ─────────────── -->
+  <section id="tutorial">
+    <div class="section-inner">
+      <p class="section-label" data-num="04.">STEP-BY-STEP GUIDE</p>
+      <h2 class="section-title"><span data-i18n="tut_title_1">Hướng Dẫn</span> <span class="accent" data-i18n="tut_title_2">Nạp &amp; Vận Hành</span></h2>
+      <p class="section-desc" data-i18n="tut_desc">
+        Các bước đơn giản để nạp code và kiểm tra Robot MIU Eilik trực tiếp qua trình duyệt máy tính.
+      </p>
+
+      <div class="tutorial-grid">
+        <div class="tut-card">
+          <div class="tut-step-num">01</div>
+          <div class="tut-card-title">Kết nối Cáp Type-C</div>
+          <div class="tut-card-desc">Cắm cáp Type-C có chức năng <strong>truyền dữ liệu</strong> vào cổng USB của bo mạch ESP32-S3.</div>
+        </div>
+        <div class="tut-card">
+          <div class="tut-step-num">02</div>
+          <div class="tut-card-title">Mở Trình Duyệt Chrome/Edge</div>
+          <div class="tut-card-desc">Đảm bảo dùng Chrome hoặc Edge phiên bản 89+ trên máy tính để hỗ trợ Web Serial API.</div>
+        </div>
+        <div class="tut-card">
+          <div class="tut-step-num">03</div>
+          <div class="tut-card-title">Bấm "KẾT NỐI CỔNG SERIAL"</div>
+          <div class="tut-card-desc">Chọn cổng COM của ESP32-S3 từ bảng hiển thị. Đèn trạng thái sẽ chuyển sang màu xanh ngọc.</div>
+        </div>
+        <div class="tut-card">
+          <div class="tut-step-num">04</div>
+          <div class="tut-card-title">Chọn File Firmware &amp; Nạp</div>
+          <div class="tut-card-desc">Kéo thả file <code>miu_eilik.ino.bin</code> vào khung Upload và bấm <strong>BẮT ĐẦU GHI FIRMWARE</strong>.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div>© 2026 <span>MIU EILIK</span> — Robot Desktop Companion Project by <span>ROSHINGUYEN</span>.</div>
+    <div class="footer-links">
+      <a href="#flash">Flash Tool</a>
+      <a href="#fw">Firmware</a>
+      <a href="#controller">Controller</a>
+      <a href="#tutorial">Tutorial</a>
+      <a href="https://github.com/ROSHINGUYEN/MIU_EILIK" target="_blank">GitHub</a>
+    </div>
+  </footer>
+
+  <script>
+    // ═══════════════════════════════════════
+    //  TRANSLATIONS DICTIONARY
+    // ═══════════════════════════════════════
+    const TRANSLATIONS = {
+      vi: {
+        nav_flash: 'FLASH',
+        nav_fw: 'FIRMWARE',
+        nav_ctrl: 'ĐIỀU KHIỂN',
+        nav_tut: 'HƯỚNG DẪN',
+        hero_title_1: 'Nạp & Điều Khiển',
+        hero_title_2: 'Trực Tuyến',
+        hero_desc: 'Công cụ nạp firmware ESP32-S3 trực tuyến và điều khiển robot MIU Eilik — không cần cài đặt Arduino IDE. Hỗ trợ nạp 1-click bản dựng có sẵn hoặc tải lên file .bin tùy chỉnh của riêng bạn qua Web Serial API.',
+        hero_cta_flash: '⚡ Bắt đầu Flash Ngay',
+        hero_cta_ctrl: '🎮 Điều khiển Robot',
+        flash_title_1: 'Nạp Firmware',
+        flash_title_2: 'Trực Tiếp Trên Web',
+        flash_desc: 'Kết nối cổng USB của ESP32-S3 và chọn phiên bản firmware. Hỗ trợ nạp bản dựng có sẵn hoặc kéo thả file .bin đã biên dịch.',
+        panel_cfg: 'CẤU HÌNH NẠP FIRMWARE',
+        label_fw_version: 'PHIÊN BẢN FIRMWARE',
+        label_release_notes: 'GHI CHÚ PHIÊN BẢN',
+        label_upload_file: 'CHỌN TỆP BIN BIÊN DỊCH (.BIN)',
+        upload_title: 'Chọn file firmware (.bin)',
+        upload_hint: 'Bấm hoặc kéo thả tệp miu_eilik.ino.bin vào đây',
+        label_flash_offset: 'ĐỊA CHỈ OFFSET FLASH (HEX)',
+        conn_disconnected: 'ĐÃ NGẮT KẾT NỐI',
+        btn_connect: 'KẾT NỐI CỔNG SERIAL',
+        btn_disconnect: 'NGẮT KẾT NỐI',
+        btn_flash: 'BẮT ĐẦU GHI FIRMWARE',
+        btn_autoscroll: 'Tự cuộn',
+        btn_timestamp: 'Thời gian',
+        btn_clear: 'Xóa Log',
+        ctrl_title_1: 'Bảng Điều Khiển',
+        ctrl_title_2: 'Robot Thời Gian Thực',
+        ctrl_desc: 'Điều khiển tức thì cử động đầu Pan/Tilt, kích hoạt cảm xúc mắt OLED và kiểm tra âm thanh trực tiếp qua kết nối Web Serial.',
+        fw_title_1: 'Kho Firmware',
+        fw_title_2: 'Chính Thức',
+        fw_desc: 'Các bản phát hành chính thức của MIU Eilik ESP32-S3. Tối ưu hóa chuyển động servo và chất lượng âm thanh I2S.',
+        tut_title_1: 'Hướng Dẫn',
+        tut_title_2: 'Nạp & Vận Hành',
+        tut_desc: 'Các bước đơn giản để nạp code và kiểm tra Robot MIU Eilik trực tiếp qua trình duyệt máy tính.'
+      },
+      en: {
+        nav_flash: 'FLASH',
+        nav_fw: 'FIRMWARE',
+        nav_ctrl: 'CONTROLLER',
+        nav_tut: 'TUTORIAL',
+        hero_title_1: 'Flash & Control',
+        hero_title_2: 'Online',
+        hero_desc: 'Online ESP32-S3 firmware flasher and live controller for MIU Eilik robot — no Arduino IDE installation needed. Flash preset builds or custom .bin files in 1-click via Web Serial API.',
+        hero_cta_flash: '⚡ Start Flashing Now',
+        hero_cta_ctrl: '🎮 Robot Controller',
+        flash_title_1: 'Flash Firmware',
+        flash_title_2: 'Directly in Browser',
+        flash_desc: 'Connect ESP32-S3 USB port and pick your firmware. Supports official presets or compiled .bin file drag & drop.',
+        panel_cfg: 'FLASH CONFIGURATION',
+        label_fw_version: 'FIRMWARE VERSION',
+        label_release_notes: 'RELEASE NOTES',
+        label_upload_file: 'UPLOAD COMPILED BIN (.BIN)',
+        upload_title: 'Choose firmware file (.bin)',
+        upload_hint: 'Click or drag & drop miu_eilik.ino.bin here',
+        label_flash_offset: 'FLASH OFFSET (HEX)',
+        conn_disconnected: 'DISCONNECTED',
+        btn_connect: 'CONNECT SERIAL PORT',
+        btn_disconnect: 'DISCONNECT',
+        btn_flash: 'FLASH TO DEVICE',
+        btn_autoscroll: 'Auto-scroll',
+        btn_timestamp: 'Timestamp',
+        btn_clear: 'Clear Log',
+        ctrl_title_1: 'Live Robot',
+        ctrl_title_2: 'Controller Suite',
+        ctrl_desc: 'Instant Pan/Tilt head motion, OLED RoboEyes emotion triggers, and audio tester over Web Serial.',
+        fw_title_1: 'Official',
+        fw_title_2: 'Firmware Library',
+        fw_desc: 'Official MIU Eilik ESP32-S3 builds with smoothstep servo kinematics and zero underrun audio.',
+        tut_title_1: 'Step-by-Step',
+        tut_title_2: 'Usage Guide',
+        tut_desc: 'Simple steps to flash code and test your MIU Eilik robot directly in your desktop browser.'
+      }
+    };
+
+    let currentLang = 'vi';
+    function setLanguage(lang) {
+      currentLang = lang;
+      const dict = TRANSLATIONS[lang];
+      if (!dict) return;
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) el.textContent = dict[key];
+      });
+
+      document.getElementById('langFlag').textContent = (lang === 'vi') ? '🇻🇳' : '🇬🇧';
+      document.getElementById('langCode').textContent = (lang === 'vi') ? 'VI' : 'EN';
+    }
+
+    // Language dropdown toggle
+    const langSwitcher = document.getElementById('langSwitcher');
+    document.getElementById('langBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      langSwitcher.classList.toggle('open');
+    });
+    document.addEventListener('click', () => langSwitcher.classList.remove('open'));
+    document.querySelectorAll('.lang-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setLanguage(btn.getAttribute('data-lang'));
+        langSwitcher.classList.remove('open');
+      });
+    });
+
+    // Mode Switcher (Preset vs Upload)
+    const tabPreset = document.getElementById('tabPreset');
+    const tabUpload = document.getElementById('tabUpload');
+    const modePreset = document.getElementById('mode-preset');
+    const modeUpload = document.getElementById('mode-upload');
+
+    tabPreset.addEventListener('click', () => {
+      tabPreset.classList.add('active');
+      tabUpload.classList.remove('active');
+      modePreset.style.display = 'block';
+      modeUpload.style.display = 'none';
+    });
+    tabUpload.addEventListener('click', () => {
+      tabUpload.classList.add('active');
+      tabPreset.classList.remove('active');
+      modePreset.style.display = 'none';
+      modeUpload.style.display = 'block';
+    });
+
+    // File Selector Display
+    let selectedBinBytes = null;
+    document.getElementById('binFileInput').addEventListener('change', function() {
+      const f = this.files[0];
+      if (!f) return;
+      document.getElementById('fileNameText').textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+      document.getElementById('fileSelectedName').style.display = 'flex';
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        selectedBinBytes = new Uint8Array(e.target.result);
+        addLog(`[ FILE ] Đã nạp file: ${f.name} (${selectedBinBytes.length} bytes)`, 'info');
+      };
+      reader.readAsArrayBuffer(f);
+    });
+
+    // Console Logging & Features
+    const logBox = document.getElementById('consoleLog');
+    let autoScroll = true;
+    let showTs = false;
+
+    document.getElementById('btnAutoscroll').addEventListener('click', function() {
+      autoScroll = !autoScroll;
+      this.classList.toggle('active', autoScroll);
+    });
+    document.getElementById('btnTimestamp').addEventListener('click', function() {
+      showTs = !showTs;
+      this.classList.toggle('active', showTs);
+    });
+    document.getElementById('btnClearLog').addEventListener('click', () => {
+      logBox.innerHTML = '<div class="log-line info">[ SYS ] Đã xóa màn hình log</div>';
+    });
+
+    function addLog(msg, type = '') {
+      const ts = showTs ? `<span class="ts">${new Date().toLocaleTimeString()}</span>` : '';
+      const div = document.createElement('div');
+      div.className = `log-line ${type}`;
+      div.innerHTML = ts + msg;
+      logBox.querySelectorAll('.log-cursor').forEach(c => c.remove());
+      logBox.appendChild(div);
+      if (autoScroll) logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // Web Serial Core Connection & Engine
+    let port = null;
+    let reader = null;
+    let isConnected = false;
+
+    const btnConnect = document.getElementById('btnConnect');
+    const btnConnectText = document.getElementById('btnConnectText');
+    const btnFlash = document.getElementById('btnFlash');
+    const connIndicator = document.getElementById('connIndicator');
+    const connLabel = document.getElementById('connLabel');
+
+    function setConnectedUI(conn, chip = 'ESP32-S3') {
+      isConnected = conn;
+      if (conn) {
+        connIndicator.classList.add('connected');
+        connLabel.textContent = `${chip} ĐÃ KẾT NỐI`;
+        btnConnect.classList.replace('btn-connect', 'btn-disconnect');
+        btnConnectText.textContent = TRANSLATIONS[currentLang].btn_disconnect;
+        btnFlash.disabled = false;
+      } else {
+        connIndicator.classList.remove('connected');
+        connLabel.textContent = TRANSLATIONS[currentLang].conn_disconnected;
+        btnConnect.classList.replace('btn-disconnect', 'btn-connect');
+        btnConnectText.textContent = TRANSLATIONS[currentLang].btn_connect;
+        btnFlash.disabled = true;
+      }
+    }
+
+    async function toggleConnect() {
+      if (isConnected) {
+        try {
+          if (reader) await reader.cancel();
+          if (port) await port.close();
+        } catch(e) {}
+        port = null;
+        setConnectedUI(false);
+        addLog('[ SYS ] Đã ngắt kết nối cổng Serial.', 'warn');
+        return;
+      }
+
+      if (!('serial' in navigator)) {
+        alert('Trình duyệt của bạn không hỗ trợ Web Serial API. Vui lòng sử dụng Google Chrome hoặc Microsoft Edge!');
+        return;
+      }
+
+      try {
+        addLog('[ SYS ] Yêu cầu chọn cổng Serial...', 'info');
+        port = await navigator.serial.requestPort();
+        const baud = parseInt(document.getElementById('baudSelect').value) || 115200;
+        await port.open({ baudRate: 115200 }); // Handshake baud
+        addLog(`[ SYS ] ✓ Đã mở cổng COM thành công @ 115200 baud`, 'success');
+        setConnectedUI(true, 'ESP32-S3');
+        startReading();
+      } catch(e) {
+        addLog('[ ERR ] Lỗi kết nối: ' + e.message, 'error');
+      }
+    }
+
+    btnConnect.addEventListener('click', toggleConnect);
+
+    async function startReading() {
+      const textDecoder = new TextDecoderStream();
+      port.readable.pipeTo(textDecoder.writable);
+      reader = textDecoder.readable.getReader();
+
+      let lineBuf = '';
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            lineBuf += value;
+            let lines = lineBuf.split('\n');
+            lineBuf = lines.pop();
+            for (let line of lines) {
+              if (line.trim()) {
+                let cls = '';
+                if (line.includes('[TELEMETRY]')) cls = 'info';
+                else if (line.includes('Error') || line.includes('panic')) cls = 'error';
+                else if (line.includes('Warn') || line.includes('Brownout')) cls = 'warn';
+                addLog(line.trim(), cls);
+              }
+            }
+          }
+        }
+      } catch(e) {
+        addLog('[ SYS ] Luồng đọc kết thúc: ' + e.message, 'warn');
+      }
+    }
+
+    async function sendCmd() {
+      const input = document.getElementById('consoleInput');
+      const val = input.value.trim();
+      if (!val || !port) return;
+      try {
+        const enc = new TextEncoder().encode(val + '\n');
+        const writer = port.writable.getWriter();
+        await writer.write(enc);
+        writer.releaseLock();
+        addLog('> ' + val, 'success');
+        input.value = '';
+      } catch(e) {
+        addLog('[ ERR ] Không thể gửi lệnh: ' + e.message, 'error');
+      }
+    }
+
+    async function sendJsonCmd(obj) {
+      if (!port) {
+        alert('Vui lòng kết nối cổng Serial trước!');
+        return;
+      }
+      const str = JSON.stringify(obj);
+      try {
+        const enc = new TextEncoder().encode(str + '\n');
+        const writer = port.writable.getWriter();
+        await writer.write(enc);
+        writer.releaseLock();
+        addLog('> ' + str, 'info');
+      } catch(e) {
+        addLog('[ ERR ] Gửi lệnh thất bại: ' + e.message, 'error');
+      }
+    }
+
+    // Dynamic Module Loader for esptool-js
+    let esptoolMod = null;
+    async function loadEsptool() {
+      if (esptoolMod) return esptoolMod;
+      addLog('[ SYS ] Đang tải thư viện esptool-js...', 'info');
+      try {
+        esptoolMod = await import('https://unpkg.com/esptool-js@0.4.1/bundle.js');
+        addLog('[ SYS ] ✓ esptool-js đã sẵn sàng', 'success');
+      } catch(e) {
+        esptoolMod = await import('https://cdn.jsdelivr.net/npm/esptool-js@0.4.1/bundle.js');
+        addLog('[ SYS ] ✓ esptool-js đã sẵn sàng (mirror)', 'success');
+      }
+      return esptoolMod;
+    }
+
+    // Core Flash Routine
+    btnFlash.addEventListener('click', async () => {
+      const pWrap = document.getElementById('flashProgressWrap');
+      const pFill = document.getElementById('flashProgressFill');
+      const pTxt = document.getElementById('flashPercentText');
+      const pStatus = document.getElementById('flashStatusText');
+
+      pWrap.classList.add('active');
+      pFill.style.width = '0%';
+      pTxt.textContent = '0%';
+      pStatus.textContent = 'Chuẩn bị dữ liệu...';
+
+      let binData = selectedBinBytes;
+      let offset = parseInt(document.getElementById('flashOffset').value, 16) || 0x10000;
+
+      if (!binData) {
+        alert('Vui lòng chọn file .bin trước khi bắt đầu nạp!');
+        return;
+      }
+
+      btnFlash.disabled = true;
+      btnConnect.disabled = true;
+
+      // Stop monitor
+      if (reader) {
+        try { await reader.cancel(); } catch(e) {}
+        reader = null;
+      }
+      await new Promise(r => setTimeout(r, 200));
+
+      addLog('[ FLASH ] ──────────────── BẮT ĐẦU NẠP FIRMWARE ────────────────', 'info');
+      addLog(`[ FLASH ] Kích thước file: ${(binData.length/1024).toFixed(1)} KB @ offset 0x${offset.toString(16).toUpperCase()}`, 'info');
+
+      try {
+        const { ESPLoader, Transport } = await loadEsptool();
+        const transport = new Transport(port, false);
+
+        const terminal = {
+          clean() {},
+          writeLine(d) { if (d && d.trim()) addLog('[ESP] ' + d.trim(), 'info'); },
+          write(d) {}
+        };
+
+        const baud = parseInt(document.getElementById('baudSelect').value) || 921600;
+        const esploader = new ESPLoader({
+          transport,
+          baudrate: baud,
+          romBaudrate: 115200,
+          terminal,
+          debugLogging: false
+        });
+
+        pStatus.textContent = 'Đồng bộ bootloader...';
+        pFill.style.width = '8%';
+        pTxt.textContent = '8%';
+        const chip = await esploader.main();
+        addLog(`[ FLASH ] ✓ Nhận diện chip: ${chip}`, 'success');
+
+        pStatus.textContent = 'Đang xóa và ghi flash...';
+        const binStr = Array.from(binData, b => String.fromCharCode(b)).join('');
+
+        await esploader.writeFlash({
+          fileArray: [{ data: binStr, address: offset }],
+          flashSize: 'keep',
+          flashMode: 'keep',
+          flashFreq: 'keep',
+          eraseAll: false,
+          compress: true,
+          reportProgress(idx, written, total) {
+            const pct = Math.round(10 + (written / total) * 88);
+            pFill.style.width = pct + '%';
+            pTxt.textContent = pct + '%';
+            pStatus.textContent = `Đang ghi: ${(written/1024).toFixed(0)} / ${(total/1024).toFixed(0)} KB (${pct}%)`;
+          },
+          calculateMD5Hash(img) {
+            return CryptoJS.MD5(CryptoJS.enc.Latin1.parse(img)).toString();
+          }
+        });
+
+        pStatus.textContent = 'Khởi động lại Robot...';
+        pFill.style.width = '100%';
+        pTxt.textContent = '100%';
+        await esploader.after();
+        addLog('[ FLASH ] ✅ Nạp hoàn tất 100%! Robot MIU Eilik đang khởi động lại...', 'success');
+      } catch(err) {
+        addLog('[ FLASH LỖI ] ' + err.message, 'error');
+        addLog('[ MẸO ] Giữ nút BOOT trên mạch ESP32-S3 khi cắm cáp USB rồi thử lại.', 'warn');
+      } finally {
+        btnFlash.disabled = false;
+        btnConnect.disabled = false;
+      }
+    });
+
+    // Default init
+    setLanguage('vi');
+  </script>
 </body>
 </html>
