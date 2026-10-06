@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Eilik Web Serial Bridge</title>
+  <style>
+    body { font-family: monospace; background: #0a141d; color: #00ffe1; padding: 20px; }
+    button { background: #00ffe1; color: #000; font-weight: bold; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; }
+    pre { background: #000; padding: 12px; border: 1px solid #00ffe1; height: 300px; overflow-y: scroll; }
+  </style>
+</head>
+<body>
+  <h2>EILIK WEB SERIAL BRIDGE</h2>
+  <button id="btnConnect" onclick="connectSerial()">KẾT NỐI USB CDC</button>
+  <button onclick="sendCmd('{\"emotion\":1}')">HAPPY</button>
+  <button onclick="sendCmd('{\"gesture\":1}')">NOD YES</button>
+  <button onclick="sendCmd('{\"pan\":90,\"tilt\":90}')">CENTER</button>
+
+  <h3>NHẬT KÝ TELEMETRY:</h3>
+  <pre id="logBox"></pre>
+
+  <script>
+    let port, writer, reader;
+
+    async function connectSerial() {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        document.getElementById('btnConnect').innerText = 'ĐÃ KẾT NỐI!';
+        writer = port.writable.getWriter();
+        readLoop();
+      } catch (e) {
+        alert('Lỗi kết nối: ' + e);
+      }
+    }
+
+    async function readLoop() {
+      reader = port.readable.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          const text = new TextDecoder().decode(value);
+          document.getElementById('logBox').innerText += text;
+        }
+      }
+    }
+
+    async function sendCmd(jsonStr) {
+      if (!writer) return;
+      const enc = new TextEncoder().encode(jsonStr);
+      // Gói tin CMD
+      await writer.write(enc);
+    }
+  </script>
+</body>
+</html>
