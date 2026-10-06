@@ -15,6 +15,10 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Internal specifications & config
+roadmap.md
+partitions.csv
+
 # Arduino / PlatformIO
 .pio/
 build/
