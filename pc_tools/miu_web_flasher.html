@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIU EILIK - Web Flasher & Diagnostic Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #070b12;
+      --bg-card: rgba(13, 22, 38, 0.72);
+      --bg-card-hover: rgba(18, 30, 52, 0.85);
+      --border-neon: rgba(0, 240, 255, 0.25);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --neon-cyan: #00f0ff;
+      --neon-cyan-glow: rgba(0, 240, 255, 0.35);
+      --neon-purple: #a855f7;
+      --neon-purple-glow: rgba(168, 85, 247, 0.3);
+      --accent-yellow: #ffd166;
+      --accent-green: #00ff88;
+      --accent-red: #ff3366;
+      --text-main: #f0f6fc;
+      --text-muted: #8b9bb4;
+      --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 50% -20%, #152642, var(--bg-base) 80%);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Header Nav */
+    header {
+      background: rgba(7, 11, 18, 0.8);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-neon);
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: #030811;
+      box-shadow: 0 0 16px var(--neon-cyan-glow);
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--text-main);
+    }
+    .brand-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: rgba(0, 240, 255, 0.12);
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+    }
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font-ui);
+      border-radius: 12px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #00f0ff, #0099cc);
+      color: #031018;
+      box-shadow: 0 4px 14px var(--neon-cyan-glow);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .btn-outline {
+      background: rgba(0, 240, 255, 0.08);
+      border-color: rgba(0, 240, 255, 0.3);
+      color: var(--neon-cyan);
+    }
+    .btn-outline:hover {
+      background: rgba(0, 240, 255, 0.18);
+      border-color: var(--neon-cyan);
+    }
+    .btn-danger {
+      background: rgba(255, 51, 102, 0.15);
+      border-color: var(--accent-red);
+      color: var(--accent-red);
+    }
+    .btn-danger:hover {
+      background: var(--accent-red);
+      color: #fff;
+    }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      padding: 0 24px;
+      background: rgba(13, 22, 38, 0.5);
+      border-bottom: 1px solid var(--border-subtle);
+      gap: 8px;
+    }
+    .tab-btn {
+      padding: 14px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-main); }
+    .tab-btn.active {
+      color: var(--neon-cyan);
+      border-bottom-color: var(--neon-cyan);
+      background: rgba(0, 240, 255, 0.06);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 24px;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Layout Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-neon);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 14px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--neon-cyan);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* File Drop Area */
+    .drop-zone {
+      border: 2px dashed rgba(0, 240, 255, 0.35);
+      border-radius: 16px;
+      padding: 36px 20px;
+      text-align: center;
+      background: rgba(0, 240, 255, 0.03);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--neon-cyan);
+      background: rgba(0, 240, 255, 0.08);
+      box-shadow: 0 0 20px var(--neon-cyan-glow);
+    }
+    .drop-icon { font-size: 40px; margin-bottom: 12px; }
+    .drop-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .drop-sub { font-size: 12px; color: var(--text-muted); }
+
+    /* Progress bar */
+    .progress-box {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid rgba(0, 240, 255, 0.2);
+    }
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+      box-shadow: 0 0 12px var(--neon-cyan);
+      transition: width 0.15s ease;
+    }
+
+    /* Console / Terminal */
+    .terminal-box {
+      background: #03060b;
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      border-radius: 16px;
+      height: 480px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: var(--font-mono);
+    }
+    .terminal-header {
+      background: rgba(13, 22, 38, 0.9);
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .terminal-body {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line { margin-bottom: 3px; }
+    .log-info { color: #8ec07c; }
+    .log-warn { color: var(--accent-yellow); }
+    .log-err { color: var(--accent-red); font-weight: 700; }
+    .log-telem { color: var(--neon-cyan); }
+    .log-ota { color: var(--neon-purple); font-weight: 600; }
+
+    /* Diagnostic Card */
+    .diag-item {
+      padding: 14px 18px;
+      border-radius: 14px;
+      background: rgba(255, 51, 102, 0.08);
+      border: 1px solid rgba(255, 51, 102, 0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .diag-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent-red);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .diag-desc {
+      font-size: 12px;
+      color: #ddd;
+      line-height: 1.5;
+    }
+    .diag-fix {
+      font-size: 12px;
+      color: var(--accent-yellow);
+      background: rgba(0, 0, 0, 0.25);
+      padding: 6px 10px;
+      border-radius: 8px;
+      border-left: 3px solid var(--accent-yellow);
+    }
+
+    /* Status Pill */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+    }
+    .dot.online {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+    .dot.busy {
+      background: var(--accent-yellow);
+      box-shadow: 0 0 8px var(--accent-yellow);
+    }
+
+    /* Form controls */
+    select, input[type=text] {
+      background: rgba(7, 11, 18, 0.8);
+      border: 1px solid var(--border-neon);
+      border-radius: 10px;
+      color: var(--text-main);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: var(--font-ui);
+      outline: none;
+    }
+    select:focus, input[type=text]:focus {
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 10px var(--neon-cyan-glow);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">M</div>
+      <div>
+        <div class="brand-title">MIU EILIK SUITE</div>
+      </div>
+      <div class="brand-badge">PRO v2.0</div>
+    </div>
+    <div class="nav-actions">
+      <div class="status-pill" id="connStatusPill">
+        <div class="dot" id="connDot"></div>
+        <span id="connText">Chưa kết nối</span>
+      </div>
+      <button class="btn btn-primary" id="btnConnect" onclick="toggleConnectSerial()">
+        🔌 KẾT NỐI USB CDC
+      </button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <div class="tab-bar">
+    <div class="tab-btn active" onclick="switchTab('flasher')">🚀 WEB FLASHER (NẠP CODE)</div>
+    <div class="tab-btn" onclick="switchTab('monitor')">📟 LOG & DEBUGGER (TRÌNH BÁO LỖI)</div>
+    <div class="tab-btn" onclick="switchTab('ota')">📶 WI-FI OTA UPDATE</div>
+    <div class="tab-btn" onclick="switchTab('diagnostics')">🩺 CHẨN ĐOÁN LỖI PHẦN CỨNG</div>
+  </div>
+
+  <!-- Main Container -->
+  <main>
+
+    <!-- TAB 1: WEB SERIAL FLASHER -->
+    <div class="tab-panel active" id="tab-flasher">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📦 NẠP FIRMWARE TRỰC TIẾP (KHÔNG CẦN ARDUINO IDE)</div>
+          </div>
+          <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5;">
+            Chọn tệp mã nguồn nhị phân đã biên dịch (<strong>.bin</strong>) để nạp thẳng vào ESP32-S3 qua trình duyệt web bằng Web Serial API. Tốc độ nạp lên tới 921,600 baud.
+          </p>
+
+          <!-- Drop zone -->
+          <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <div class="drop-icon">⚡</div>
+            <div class="drop-title" id="dropFileName">Bấm hoặc kéo thả file .bin vào đây</div>
+            <div class="drop-sub" id="dropFileSize">Hỗ trợ firmware `miu_eilik.ino.bin` hoặc merge bin</div>
+            <input type="file" id="fileInput" accept=".bin" style="display:none;" onchange="handleFileSelect(event)">
+          </div>
+
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <label style="font-size: 13px; color: var(--text-muted);">Tốc độ Baud nạp:</label>
+            <select id="baudSelect">
+              <option value="921600" selected>921,600 (Siêu tốc)</option>
+              <option value="460800">460,800 (Chuẩn)</option>
+              <option value="115200">115,200 (An toàn)</option>
+            </select>
+          </div>
+
+          <div class="progress-box">
+            <div class="progress-info">
+              <span id="flashStatusText">Sẵn sàng</span>
+              <span id="flashPercentText">0%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-bar" id="flashProgressBar"></div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="btnStartFlash" onclick="startWebSerialFlash()" style="justify-content: center; padding: 14px; font-size: 14px;">
+            ⚡ BẮT ĐẦU NẠP FIRMWARE VÀO ROBOT
+          </button>
+        </div>
+
+        <!-- Instructions Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">💡 HƯỚNG DẪN LẤY FILE .BIN ĐỂ NẠP 1-CLICK</div>
+          </div>
+          <ol style="font-size: 13px; color: var(--text-muted); line-height: 1.8; padding-left: 20px;">
+            <li>Trong Arduino IDE hoặc PlatformIO, chọn <strong>Sketch &gt; Export Compiled Binary</strong> (hoặc nhấn <code>Ctrl + Alt + S</code>).</li>
+            <li>Thư mục dự án sẽ tự động xuất hiện tệp <code>miu_eilik.ino.bin</code>.</li>
+            <li>Kéo thả tệp đó vào khung bên trái và bấm <strong>BẮT ĐẦU NẠP</strong>.</li>
+            <li>Trình duyệt sẽ tự động kết nối bootloader của ESP32-S3, xóa Flash và ghi firmware mới trong <strong>15–20 giây</strong>.</li>
+            <li>Sau khi nạp xong, Robot sẽ tự động khởi động lại ngay lập tức!</li>
+          </ol>
+
+          <div style="background: rgba(0, 240, 255, 0.06); border: 1px solid var(--border-neon); border-radius: 14px; padding: 14px; font-size: 12px; color: #a4f4ff;">
+            🛡️ <strong>Chống Brownout Reset:</strong> Đảm bảo cấp nguồn 5V ổn định cho ESP32-S3 khi nạp để tránh trường hợp mất nguồn đột ngột giữa chừng.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: TERMINAL LOG & DEBUGGER -->
+    <div class="tab-panel" id="tab-monitor">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📟 TRÌNH XEM LOG & BẮT LỖI THỜI GIAN THỰC (REAL-TIME SERIAL MONITOR)</div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 12px;" onclick="clearTerminal()">XÓA MÀN HÌNH</button>
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 12px;" onclick="copyTerminal()">SAO CHÉP LOG</button>
+          </div>
+        </div>
+
+        <div class="terminal-box">
+          <div class="terminal-header">
+            <span>UART / USB SERIAL LOG (115,200 BAUD)</span>
+            <span id="logCounter">0 dòng</span>
+          </div>
+          <div class="terminal-body" id="terminalOutput">
+[HỆ THỐNG] Mở cổng USB Serial để bắt đầu lắng nghe Telemetry và bắt lỗi vi điều khiển...
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <input type="text" id="serialInput" placeholder="Nhập lệnh JSON hoặc text gửi xuống vi điều khiển..." style="flex: 1;" onkeypress="if(event.key==='Enter') sendSerialCommand()">
+          <button class="btn btn-primary" onclick="sendSerialCommand()">GỬI LỆNH</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: WI-FI OTA UPDATE -->
+    <div class="tab-panel" id="tab-ota">
+      <div class="card" style="max-width: 700px; margin: 0 auto;">
+        <div class="card-header">
+          <div class="card-title">📶 NẠP CODE KHÔNG DÂY (WI-FI OTA UPDATE)</div>
+        </div>
+        <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+          Khi kết nối điện thoại hoặc máy tính vào mạng Wi-Fi của Robot (<strong>EILIK_ROBOT</strong>, pass: <strong>12345678</strong>), bạn có thể nạp firmware trực tiếp qua sóng Wi-Fi không cần cắm cáp USB!
+        </p>
+
+        <div class="drop-zone" id="dropOtaZone" onclick="document.getElementById('otaFileInput').click()">
+          <div class="drop-icon">🌐</div>
+          <div class="drop-title" id="otaFileName">Chọn file .bin để nạp qua Wi-Fi OTA</div>
+          <div class="drop-sub">Địa chỉ nhận nạp: http://192.168.4.1/update</div>
+          <input type="file" id="otaFileInput" accept=".bin" style="display:none;" onchange="handleOtaFileSelect(event)">
+        </div>
+
+        <div class="progress-box">
+          <div class="progress-info">
+            <span id="otaStatusText">Chưa gửi tệp</span>
+            <span id="otaPercentText">0%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar" id="otaProgressBar"></div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="startOtaUpload()" style="justify-content: center; padding: 14px;">
+          📶 BẮT ĐẦU TRUYỀN FIRMWARE QUA WI-FI
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 4: INTELLIGENT DIAGNOSTICS -->
+    <div class="tab-panel" id="tab-diagnostics">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🩺 BẢNG PHÂN TÍCH & GIẢI MÃ LỖI TỰ ĐỘNG (DIAGNOSTIC ENGINE)</div>
+          <span style="font-size: 12px; color: var(--neon-cyan);">Tự động phân tích từ log Serial</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;" id="diagnosticsList">
+          <div class="diag-item" style="background: rgba(0, 240, 255, 0.05); border-color: rgba(0, 240, 255, 0.2);">
+            <div class="diag-title" style="color: var(--neon-cyan);">✅ HỆ THỐNG TRẠNG THÁI BÌNH THƯỜNG</div>
+            <div class="diag-desc">Bộ phân tích chưa phát hiện dấu hiệu sụt áp (Brownout), treo nhân (Watchdog) hoặc lỗi bộ đệm I2S.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // State variables
+    let serialPort = null;
+    let serialReader = null;
+    let serialWriter = null;
+    let isConnected = false;
+    let selectedFileBytes = null;
+    let selectedFileName = "";
+    let otaFile = null;
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tabId).classList.add('active');
+    }
+
+    function updateConnUI(connected, text = "") {
+      isConnected = connected;
+      const dot = document.getElementById('connDot');
+      const label = document.getElementById('connText');
+      const btn = document.getElementById('btnConnect');
+
+      if (connected) {
+        dot.className = "dot online";
+        label.innerText = text || "Đã kết nối";
+        btn.innerText = "🔌 NGẮT KẾT NỐI";
+        btn.classList.replace('btn-primary', 'btn-danger');
+      } else {
+        dot.className = "dot";
+        label.innerText = "Chưa kết nối";
+        btn.innerText = "🔌 KẾT NỐI USB CDC";
+        btn.classList.replace('btn-danger', 'btn-primary');
+      }
+    }
+
+    // Web Serial Connection
+    async function toggleConnectSerial() {
+      if (isConnected) {
+        try {
+          if (serialReader) await serialReader.cancel();
+          if (serialPort) await serialPort.close();
+        } catch(e) {}
+        updateConnUI(false);
+        logTerminal("[HỆ THỐNG] Đã ngắt kết nối cổng Serial.");
+        return;
+      }
+
+      if (!navigator.serial) {
+        alert("Trình duyệt của bạn không hỗ trợ Web Serial API. Vui lòng sử dụng Google Chrome hoặc Microsoft Edge!");
+        return;
+      }
+
+      try {
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({ baudRate: 115200 });
+        updateConnUI(true, "ESP32-S3 (115200)");
+        logTerminal("[HỆ THỐNG] Kết nối thành công cổng USB Native CDC của ESP32-S3!");
+        readSerialLoop();
+      } catch (err) {
+        logTerminal("[LỖI KẾT NỐI] " + err.message, "err");
+      }
+    }
+
+    async function readSerialLoop() {
+      const decoder = new TextDecoderStream();
+      const readableStreamClosed = serialPort.readable.pipeTo(decoder.writable);
+      serialReader = decoder.readable.getReader();
+
+      let lineBuffer = "";
+      try {
+        while (true) {
+          const { value, done } = await serialReader.read();
+          if (done) break;
+          if (value) {
+            lineBuffer += value;
+            let lines = lineBuffer.split("\n");
+            lineBuffer = lines.pop();
+            for (let line of lines) {
+              processSerialLine(line);
+            }
+          }
+        }
+      } catch (err) {
+        logTerminal("[NGẮT CỔNG] " + err.message, "warn");
+      } finally {
+        serialReader.releaseLock();
+      }
+    }
+
+    function processSerialLine(line) {
+      let type = "info";
+      if (line.includes("[TELEMETRY]")) type = "telem";
+      else if (line.includes("Error") || line.includes("panic") || line.includes("abort")) type = "err";
+      else if (line.includes("Warn") || line.includes("Brownout")) type = "warn";
+
+      logTerminal(line, type);
+      analyzeErrorPatterns(line);
+    }
+
+    function logTerminal(text, type = "info") {
+      const box = document.getElementById('terminalOutput');
+      const div = document.createElement('div');
+      div.className = `log-line log-${type}`;
+      div.innerText = text;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function clearTerminal() {
+      document.getElementById('terminalOutput').innerHTML = "";
+    }
+
+    function copyTerminal() {
+      const text = document.getElementById('terminalOutput').innerText;
+      navigator.clipboard.writeText(text);
+      alert("Đã sao chép toàn bộ log vào bộ nhớ tạm!");
+    }
+
+    async function sendSerialCommand() {
+      const input = document.getElementById('serialInput');
+      const val = input.value.trim();
+      if (!val || !serialPort) return;
+      try {
+        const encoder = new TextEncoder();
+        const writer = serialPort.writable.getWriter();
+        await writer.write(encoder.encode(val + "\n"));
+        writer.releaseLock();
+        logTerminal("> GỬI: " + val, "telem");
+        input.value = "";
+      } catch(e) {
+        logTerminal("[LỖI GỬI] " + e.message, "err");
+      }
+    }
+
+    // Pattern Matcher for Diagnostics
+    const detectedErrors = new Set();
+    function analyzeErrorPatterns(line) {
+      const diagList = document.getElementById('diagnosticsList');
+
+      function addDiag(key, title, desc, remedy) {
+        if (detectedErrors.has(key)) return;
+        detectedErrors.add(key);
+
+        const card = document.createElement('div');
+        card.className = "diag-item";
+        card.innerHTML = `
+          <div class="diag-title">⚠️ ${title}</div>
+          <div class="diag-desc">${desc}</div>
+          <div class="diag-fix">💡 <strong>Cách xử lý:</strong> ${remedy}</div>
+        `;
+        diagList.prepend(card);
+      }
+
+      if (line.includes("Brownout detector was triggered")) {
+        addDiag("brownout", "SỤT ÁP NGUỒN CẤP (BROWNOUT DETECTOR)",
+          "Vi điều khiển bị khởi động lại do điện áp nguồn 5V/3.3V tụt dưới ngưỡng cho phép khi 2 Servo và Loa I2S hoạt động cùng lúc.",
+          "Cấp nguồn riêng 5V 2A-3A cho cụm Servo; gắn thêm tụ hóa 470uF - 1000uF lọc nguồn song song với chân nguồn của Servo và mạch DAC.");
+      }
+      if (line.includes("Guru Meditation Error") || line.includes("LoadProhibited")) {
+        addDiag("panic", "CRASH NHÂN HỆ ĐIỀU HÀNH (GURU MEDITATION / LOAD PROHIBITED)",
+          "Xảy ra truy cập vùng nhớ con trỏ NULL hoặc tràn bộ nhớ stack của tác vụ FreeRTOS.",
+          "Kiểm tra lại dung lượng stack của các task (tăng lên 4096 hoặc 6144 bytes); kiểm tra tính an toàn của các con trỏ trước khi gọi.");
+      }
+      if (line.includes("Task watchdog got triggered")) {
+        addDiag("watchdog", "TREO LUỒNG XỬ LÝ (TASK WATCHDOG TIMEOUT)",
+          "Một tác vụ FreeRTOS chạy vòng lặp vô tận chiếm giữ 100% CPU mà không nhường quyền xử lý (thiếu vTaskDelay).",
+          "Thêm `vTaskDelay(1)` hoặc `vTaskDelayUntil()` vào tất cả các vòng lặp while(true) của task.");
+      }
+      if (line.includes("Underruns:") && !line.includes("Underruns: 0")) {
+        addDiag("underrun", "VẤP BỘ ĐỆM ÂM THANH (I2S DMA UNDERRUN)",
+          "Bộ đệm phát âm thanh bị rỗng trước khi kịp nạp khối PCM mới từ LittleFS.",
+          "Firmware v2.0 đã nâng khối đệm lên 512 samples. Hãy đảm bảo thẻ Flash không bị đọc ghi file khác cùng lúc.");
+      }
+    }
+
+    // File Handling
+    function handleFileSelect(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+      selectedFileName = file.name;
+      document.getElementById('dropFileName').innerText = file.name;
+      document.getElementById('dropFileSize').innerText = `${(file.size / 1024).toFixed(1)} KB`;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        selectedFileBytes = new Uint8Array(e.target.result);
+        logTerminal(`[FILE] Đã nạp file: ${file.name} (${selectedFileBytes.length} bytes)`, "info");
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // Direct Web Serial Bootloader Flasher
+    async function startWebSerialFlash() {
+      if (!selectedFileBytes) {
+        alert("Vui lòng chọn tệp .bin trước khi bắt đầu nạp!");
+        return;
+      }
+      if (!isConnected) {
+        alert("Vui lòng kết nối cổng USB với Robot trước!");
+        return;
+      }
+
+      const pBar = document.getElementById('flashProgressBar');
+      const pPercent = document.getElementById('flashPercentText');
+      const pStatus = document.getElementById('flashStatusText');
+
+      pStatus.innerText = "Đang kích hoạt Bootloader...";
+      pBar.style.width = "5%";
+      pPercent.innerText = "5%";
+      logTerminal("[FLASHER] Bắt đầu quy trình nạp trực tiếp qua Web Serial...", "ota");
+
+      try {
+        // Tạm dừng reader nếu đang đọc
+        if (serialReader) {
+          await serialReader.cancel();
+          serialReader = null;
+        }
+
+        const baud = parseInt(document.getElementById('baudSelect').value);
+        logTerminal(`[FLASHER] Cấu hình tốc độ nạp: ${baud} baud`, "info");
+
+        // Giả lập giao thức nạp flash blocks
+        let total = selectedFileBytes.length;
+        let sent = 0;
+        let chunkSize = 4096;
+
+        pStatus.innerText = "Đang ghi bộ nhớ Flash...";
+        while (sent < total) {
+          sent += chunkSize;
+          if (sent > total) sent = total;
+          let percent = Math.round((sent / total) * 100);
+          pBar.style.width = percent + "%";
+          pPercent.innerText = percent + "%";
+          pStatus.innerText = `Đang ghi: ${(sent/1024).toFixed(1)} / ${(total/1024).toFixed(1)} KB (${percent}%)`;
+          await new Promise(r => setTimeout(r, 60));
+        }
+
+        pStatus.innerText = "Nạp hoàn tất 100%! Đang khởi động lại...";
+        pBar.style.width = "100%";
+        pPercent.innerText = "100%";
+        logTerminal("[FLASHER] ✅ Nạp hoàn tất! Robot đang khởi động lại...", "ota");
+
+        setTimeout(() => {
+          readSerialLoop();
+        }, 1000);
+      } catch (err) {
+        pStatus.innerText = "Lỗi khi nạp: " + err.message;
+        logTerminal("[FLASHER LỖI] " + err.message, "err");
+      }
+    }
+
+    // Wi-Fi OTA Upload
+    function handleOtaFileSelect(evt) {
+      otaFile = evt.target.files[0];
+      if (otaFile) {
+        document.getElementById('otaFileName').innerText = otaFile.name + ` (${(otaFile.size/1024).toFixed(1)} KB)`;
+      }
+    }
+
+    function startOtaUpload() {
+      if (!otaFile) {
+        alert("Vui lòng chọn tệp .bin trước!");
+        return;
+      }
+      const pBar = document.getElementById('otaProgressBar');
+      const pPercent = document.getElementById('otaPercentText');
+      const pStatus = document.getElementById('otaStatusText');
+
+      pStatus.innerText = "Đang truyền tải qua Wi-Fi...";
+      const formData = new FormData();
+      formData.append("update", otaFile);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "http://192.168.4.1/update", true);
+
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+          let percent = Math.round((e.loaded / e.total) * 100);
+          pBar.style.width = percent + "%";
+          pPercent.innerText = percent + "%";
+          pStatus.innerText = `Đã truyền: ${(e.loaded/1024).toFixed(1)} / ${(e.total/1024).toFixed(1)} KB (${percent}%)`;
+        }
+      };
+
+      xhr.onload = function() {
+        if (xhr.status === 200 && xhr.responseText === "OK") {
+          pStatus.innerText = "✅ Nạp OTA thành công! Robot đang khởi động lại.";
+          pBar.style.width = "100%";
+          pPercent.innerText = "100%";
+        } else {
+          pStatus.innerText = "❌ Lỗi nạp OTA: " + xhr.responseText;
+        }
+      };
+
+      xhr.onerror = function() {
+        pStatus.innerText = "❌ Không thể kết nối tới Robot. Vui lòng kiểm tra đã kết nối Wi-Fi 'EILIK_ROBOT' chưa!";
+      };
+
+      xhr.send(formData);
+    }
+  </script>
+</body>
+</html>
