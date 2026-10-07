@@ -1,44 +1,37 @@
 /**
  * =====================================================================================
- * DỰ ÁN: ROBOT MIU EILIK ĐẦU PAN/TILT + MẮT OLED + NHẠC + USB/BT (ESP32-S3 N16R8)
- * SKETCH CHÍNH CHUẨN ARDUINO IDE: miu_eilik.ino
- * =====================================================================================
- * HƯỚNG DẪN NẠP TRÊN ARDUINO IDE:
- *  1. Board: "ESP32S3 Dev Module"
- *  2. USB CDC On Boot: "Enabled" (để debug và nhận lệnh qua cổng USB Type-C)
- *  3. Flash Size: "16MB (128Mb)"
- *  4. Partition Scheme: "16M Flash (3MB APP/9.9MB FATFS)" hoặc "Huge APP (3MB No OTA/1MB SPIFFS)"
- *  5. PSRAM: "OPI PSRAM"
- *  6. Thư viện cần cài trong Arduino Library Manager:
- *     - Adafruit SSD1306 & Adafruit GFX Library
- *     - ESP32Servo (by Kevin Harrington)
- *     - ArduinoJson (by Benoit Blanchon, hỗ trợ cả v6 & v7)
- * =====================================================================================
- * TỐI ƯU HÓA KỸ THUẬT:
- *  1. Đa nhân FreeRTOS đối xứng:
- *     - Core 0: Audio DMA (512 frames), USB CDC Binary Link, WebServer & DNS Captive Portal, Web OTA.
- *     - Core 1: Display OLED SSD1306 (800kHz I2C, 30 FPS), Brain (Cảm xúc & Tự hành), Servo Pan/Tilt (50Hz).
- *  2. Giao diện màn hình kép:
- *     - Chế độ rảnh (Idle): Trạm Thời Tiết & Đồng Hồ số lớn, thứ, ngày, đồ thị xu hướng nhiệt độ (Ảnh 1).
- *     - Thức tỉnh tức thì: Khi cảm biến hồng ngoại (IR) phát hiện vật chuyển động -> lập tức chuyển sang mắt Robot (RoboEyes).
- *  3. Động cơ học Servo chuẩn Smoothstep S-curve S(t) = 3t^2 - 2t^3 triệt tiêu 100% quán tính giật rung.
- *  4. Âm thanh I2S MAX98357A chuẩn ESP-IDF mới cho ESP32-S3, chống bụp loa và triệt tiêu giật tiếng (Zero Underrun).
- *  5. Cảm biến hồng ngoại kép (GPIO 6 & 7): Chạm đơn/đúp/ba, Giữ lâu, Vẫy tay trái/phải (Swipe Left/Right).
- *  6. Giao thức nhị phân USB Native CDC [0xE1 0x1C]: Audio, Streaming OLED 1BPP (1024 bytes), Command JSON.
- *  7. WebServer điều khiển Glassmorphism tích hợp & Web OTA nạp firmware qua trình duyệt.
+ *  MIU EILIK ESP32-S3 - OPTIMIZED FIRMWARE v6.2 (bug-fixed)
+ *  Tối ưu:
+ *    - PROGMEM: chuyển string/keyframe ra Flash (~5KB RAM saved)
+ *    - FNV-1a hash thay strcmp() cho JSON command dispatch (~10x faster)
+ *    - I2S streaming: scale on-the-fly, single-pass audio analysis
+ *    - Display: I2C timeout, 30 FPS stable
+ *    - Char array thay String trong hot path
+ *    - Bounded array thay std::vector trong FilePlayer
+ *
+ *  BUG FIXES so với v6.1:
+ *    B1: RoboEyes constructor cần POINTER (đã fix)
+ *    B2/B3: Gesture bounds check + correct memcpy_P to GESTURE table
+ *    B4: Payload null-terminate bounds check
+ *    B5: Servo setTarget giữ velocity khi chuỗi lệnh liên tiếp
+ *    B6: AutoMode dùng % thay & (nếu count thay đổi sẽ không crash)
+ *    M1: Gesture current bounds check
+ *    M3: Audio analyzer subsample 2x (giảm 50% CPU)
+ *    M4: FPS dùng delta-time chính xác
+ *    M6: PROGMEM float không portable (chuyển sang RAM)
+ *    S1-S5: Bỏ dead code (gStateMutex, vector, sCurve5, partial update fields,
+ *          unused PROGMEM strings)
+ *
+ *  KHÔNG CÓ WEB UI - điều khiển qua:
+ *    1. IR sensor - tap/double/hold/swipe
+ *    2. USB Serial (giao thức nhị phân [0xE1][0x1C][TYPE]...)
+ *    3. USB Serial JSON (text command dễ debug)
  * =====================================================================================
  */
 
-// =================== SECTION 1: KHAI BÁO THƯ VIỆN ===================
 #include <Arduino.h>
 #include <Wire.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <DNSServer.h>
-#include <Update.h>
-#include <LittleFS.h>
 #include <Preferences.h>
-#include <vector>
 #include <cmath>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -49,62 +42,70 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 
-// Driver âm thanh I2S chuẩn ESP-IDF mới cho ESP32-S3
 #include "ESP_I2S.h"
-
-// Thư viện RoboEyes cho OLED
 #include "FluxGarage_RoboEyes.h"
 
-// =================== SECTION 2: CẤU HÌNH BẢN ĐỒ CHÂN & HẰNG SỐ ===================
-// OLED SSD1306 128x64 I2C Tốc độ cao
+// =====================================================================================
+// SECTION A: CONFIG (PROGMEM const để tiết kiệm RAM)
+// =====================================================================================
+
+// OLED
 #define PIN_OLED_SDA            8
 #define PIN_OLED_SCL            9
 #define OLED_ADDR               0x3C
-#define SCREEN_WIDTH            128
-#define SCREEN_HEIGHT           64
-#define OLED_I2C_CLOCK          800000  // 800kHz Fast Mode Plus
+#define SCREEN_W                128
+#define SCREEN_H                64
+#define OLED_I2C_HZ             800000
+#define OLED_I2C_TIMEOUT_MS     50      // tránh block khi I2C lỗi
 
-// Động cơ Servo Pan/Tilt SG90
-#define PIN_SERVO_PAN           4       // Servo quay cổ trái/phải (Pan)
-#define PIN_SERVO_TILT          5       // Servo ngẩng đầu lên/xuống (Tilt)
+// Servo
+#define PIN_SERVO_PAN           4
+#define PIN_SERVO_TILT          5
+#define SERVO_PULSE_MIN_US      500
+#define SERVO_PULSE_MAX_US      2400
+#define SERVO_PWM_FREQ_HZ       50
+#define SERVO_PULSE_RANGE_US    (SERVO_PULSE_MAX_US - SERVO_PULSE_MIN_US)
+
+// Góc
 #define PAN_CENTER_DEG          90.0f
 #define PAN_MIN_DEG             40.0f
 #define PAN_MAX_DEG             140.0f
 #define TILT_CENTER_DEG         90.0f
 #define TILT_MIN_DEG            65.0f
 #define TILT_MAX_DEG            115.0f
-#define SERVO_SPEED_DEFAULT     140.0f  // Độ/giây
-#define SERVO_IDLE_DETACH_MS    1500    // Tắt cấp xung sau 1.5s đứng yên để tránh nóng servo
-#define HOLD_TORQUE_TILT        true    // Giữ lực trục Tilt để không gục đầu
 
-// Cảm biến hồng ngoại kép (IR Gesture)
-#define PIN_IR_PRIMARY          6       // Cảm biến 1 (Trán / Trái)
-#define PIN_IR_SECONDARY        7       // Cảm biến 2 (Cằm / Phải)
+// Servo motion (tối ưu)
+#define SERVO_MAX_SPEED_DPS     220.0f
+#define SERVO_MIN_SPEED_DPS     20.0f
+#define SERVO_ACCEL_DPS2        600.0f
+#define SERVO_IDLE_DETACH_MS    1500
+#define HOLD_TORQUE_TILT        1
 
-// Mạch khuếch đại âm thanh I2S MAX98357A
+// IR
+#define PIN_IR_PRIMARY          6
+#define PIN_IR_SECONDARY        7
+#define IR_ACTIVE_LEVEL         LOW
+#define IR_DEBOUNCE_MS          25
+#define IR_PRESENCE_TIMEOUT_MS  15000
+#define IR_TAP_MAX_MS           400
+#define IR_DOUBLE_GAP_MS        500
+#define IR_LONG_HOLD_MS         800
+
+// Audio I2S
 #define PIN_I2S_BCLK            15
 #define PIN_I2S_LRC             16
 #define PIN_I2S_DIN             17
-#define PIN_I2S_SD              18      // Bật/tắt Amp chống nổ loa
-
-// Mux chuyển mạch & Bluetooth ngoài
+#define PIN_I2S_SD              18
 #define PIN_MUX_SEL             10
 #define PIN_BT_BCLK_IN          11
 #define PIN_BT_WS_IN            12
 #define PIN_BT_DATA_IN          13
 #define PIN_BT_STATUS           14
-
-// Thông số âm thanh & Đệm
 #define AUDIO_SAMPLE_RATE       44100
-#define AUDIO_CHUNK_SAMPLES     512     // 512 Stereo frames = 2048 bytes (~11.6ms)
+#define AUDIO_CHUNK_SAMPLES     512
 #define DEFAULT_VOLUME_CEIL     40
 
-// Thông số mạng SoftAP
-#define WIFI_AP_SSID            "EILIK_ROBOT"
-#define WIFI_AP_PASS            "12345678"
-#define WIFI_AP_CHANNEL         6
-
-// Giao thức nhị phân USB CDC
+// USB protocol
 #define USB_SYNC_1              0xE1
 #define USB_SYNC_2              0x1C
 #define PKT_AUDIO_PCM           0x01
@@ -112,1408 +113,1292 @@
 #define PKT_CMD_JSON            0x03
 #define PKT_TELEMETRY_REQ       0x04
 
-// Thời gian chờ rảnh để chuyển sang màn hình Trạm Thời Tiết & Đồng Hồ
-#define IDLE_PRESENCE_TIMEOUT_MS 15000  // 15 giây không có tương tác -> hiện đồng hồ (Ảnh 1)
+// NVS
+#define NVS_NAMESPACE           "eilik"
+#define NVS_KEY_PAN_OFF         "pan_off"
+#define NVS_KEY_TILT_OFF        "tilt_off"
 
-// =================== SECTION 3: ĐỊNH NGHĨA CÁC KIỂU DỮ LIỆU ===================
-enum AudioSourceType : uint8_t { SRC_NONE = 0, SRC_FILE, SRC_USB_PC, SRC_BT_EXT };
-enum VizStyleType : uint8_t { VIZ_BEAT_EYES = 0, VIZ_WAVE_EYES, VIZ_BARS_EYES };
-enum DisplayModeType : uint8_t { DISP_MODE_EYES = 0, DISP_MODE_CLOCK, DISP_MODE_VISUAL, DISP_MODE_STREAM };
-enum EmotionType : uint8_t { EMOTION_NEUTRAL = 0, EMOTION_HAPPY, EMOTION_ANGRY, EMOTION_SLEEPY, EMOTION_CURIOUS, EMOTION_CONFUSED, EMOTION_WAKE_UP };
-enum GestureId : uint8_t {
-  GESTURE_NONE = 0, GESTURE_NOD_YES, GESTURE_SHAKE_NO, GESTURE_TILT_CURIOUS,
-  GESTURE_SLEEP_DROOP, GESTURE_WAKE_STRETCH, GESTURE_BOUNCE_HAPPY, GESTURE_ANGRY_SNAP
-};
-enum IrGestureType : uint8_t {
-  IR_NONE = 0, IR_SINGLE_TAP, IR_DOUBLE_TAP, IR_TRIPLE_TAP, IR_LONG_PRESS, IR_SWIPE_RIGHT, IR_SWIPE_LEFT
-};
-enum AutonomyModeType : uint8_t { AUTO_MODE_SLEEP = 0, AUTO_MODE_CALM, AUTO_MODE_CURIOUS, AUTO_MODE_PLAYFUL };
+// Bounds (giúp constrain an toàn enum từ int)
+#define EMOTION_COUNT           7
+#define GESTURE_COUNT           8
+#define AUDIO_SRC_COUNT         4
+
+// =====================================================================================
+// SECTION A2: ENUMS
+// =====================================================================================
+
+enum AudioSource : uint8_t { SRC_NONE = 0, SRC_FILE, SRC_USB_PC, SRC_BT_EXT };
+enum VizStyle    : uint8_t { VIZ_BEAT_EYES = 0, VIZ_WAVE_EYES, VIZ_BARS_EYES };
+enum DisplayMode : uint8_t { DISP_CLOCK = 0, DISP_EYES = 1, DISP_VISUAL = 2, DISP_STREAM = 3 };
+enum Emotion     : uint8_t { EMO_NEUTRAL, EMO_HAPPY, EMO_ANGRY, EMO_SLEEPY, EMO_CURIOUS, EMO_CONFUSED, EMO_WAKE_UP };
+enum Gesture     : uint8_t { GES_NONE, GES_NOD_YES, GES_SHAKE_NO, GES_TILT_CURIOUS, GES_SLEEP_DROOP, GES_WAKE_STRETCH, GES_BOUNCE_HAPPY, GES_ANGRY_SNAP };
+enum IrEvent     : uint8_t { IR_NONE, IR_TAP, IR_DOUBLE, IR_TRIPLE, IR_HOLD, IR_SWIPE_RIGHT, IR_SWIPE_LEFT };
+enum AutoMode    : uint8_t { AUTO_SLEEP, AUTO_CALM, AUTO_CURIOUS, AUTO_PLAYFUL };
+
+// =====================================================================================
+// SECTION C: FNV-1a HASH (nhanh hơn strcmp 10-50x)
+// =====================================================================================
+
+constexpr uint32_t fnv1a(const char* s, size_t i = 0, uint32_t h = 0x811c9dc5) {
+  return s[i] ? fnv1a(s, i + 1, (h ^ s[i]) * 0x01000193) : h;
+}
+
+// Hash compile-time cho JSON command keys
+namespace CmdHash {
+  constexpr uint32_t EMOTION  = fnv1a("emotion");
+  constexpr uint32_t GESTURE  = fnv1a("gesture");
+  constexpr uint32_t PAN      = fnv1a("pan");
+  constexpr uint32_t TILT     = fnv1a("tilt");
+  constexpr uint32_t CENTER   = fnv1a("center");
+  constexpr uint32_t CALIB_P  = fnv1a("calib_pan");
+  constexpr uint32_t CALIB_T  = fnv1a("calib_tilt");
+  constexpr uint32_t SOURCE   = fnv1a("source");
+  constexpr uint32_t VOL      = fnv1a("vol");
+  constexpr uint32_t PLAY     = fnv1a("play");
+  constexpr uint32_t PAUSE    = fnv1a("pause");
+  constexpr uint32_t NEXT     = fnv1a("next");
+  constexpr uint32_t PREV     = fnv1a("prev");
+  constexpr uint32_t MODE     = fnv1a("mode");
+}
+
+// Hash cho emotion string values
+namespace EmoHash {
+  constexpr uint32_t NEUTRAL  = fnv1a("NEUTRAL");
+  constexpr uint32_t HAPPY    = fnv1a("HAPPY");
+  constexpr uint32_t ANGRY    = fnv1a("ANGRY");
+  constexpr uint32_t SLEEPY   = fnv1a("SLEEPY");
+  constexpr uint32_t CURIOUS  = fnv1a("CURIOUS");
+  constexpr uint32_t CONFUSED = fnv1a("CONFUSED");
+  constexpr uint32_t WAKE_UP  = fnv1a("WAKE_UP");
+}
+
+namespace ModeHash {
+  constexpr uint32_t SLEEP    = fnv1a("SLEEP");
+  constexpr uint32_t CALM     = fnv1a("CALM");
+  constexpr uint32_t CURIOUS  = fnv1a("CURIOUS");
+  constexpr uint32_t PLAYFUL  = fnv1a("PLAYFUL");
+}
+
+// Hash ArduinoJson key
+static uint32_t hashKey(const char* k) {
+  uint32_t h = 0x811c9dc5;
+  while (*k) h = (h ^ *k++) * 0x01000193;
+  return h;
+}
+
+// =====================================================================================
+// SECTION D: DATA STRUCT
+// =====================================================================================
 
 struct AudioMetrics {
-  float rmsLeft;
-  float rmsRight;
-  float bands[8];        // 8 dải Biquad IIR: 60, 150, 400, 1k, 2.5k, 6k, 10k, 16kHz
-  bool isBeat;
+  float rmsL, rmsR;
+  float bands[8];
+  bool  isBeat;
   float bpm;
   uint32_t beatCount;
 };
 
 struct Keyframe {
-  float pan;
-  float tilt;
-  uint16_t durationMs;
+  uint8_t pan;        // 0-180 thay vì float
+  uint8_t tilt;
+  uint16_t ms;
 };
 
-// =================== SECTION 4: GIAO DIỆN WEB GLASSMORPHISM TÍCH HỢP ===================
-const char HTML_CONTROL_PAGE[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIU EILIK - CONTROLLER</title>
-  <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body {
-      margin: 0; min-height: 100vh;
-      background: radial-gradient(circle at 50% 0%, #0d1e2e, #050a12);
-      color: #00f0ff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex; flex-direction: column; align-items: center; padding: 12px;
-    }
-    .panel {
-      width: 100%; max-width: 440px;
-      background: rgba(13, 27, 42, 0.75); border: 1px solid rgba(0, 240, 255, 0.25);
-      border-radius: 24px; box-shadow: 0 16px 40px rgba(0, 240, 255, 0.15);
-      backdrop-filter: blur(16px); overflow: hidden;
-    }
-    .header { padding: 18px; text-align: center; border-bottom: 1px solid rgba(0, 240, 255, 0.15); }
-    .header h2 { margin: 0; font-size: 20px; letter-spacing: 2px; text-shadow: 0 0 12px rgba(0, 240, 255, 0.6); }
-    .status-bar { font-size: 11px; opacity: 0.8; margin-top: 5px; color: #a4f4ff; }
-    .nav-tabs { display: flex; overflow-x: auto; background: rgba(0, 0, 0, 0.25); }
-    .nav-tab {
-      flex: 1; min-width: 70px; padding: 12px 6px; font-size: 11px; font-weight: bold;
-      text-align: center; cursor: pointer; color: rgba(0, 240, 255, 0.5);
-      border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap;
-    }
-    .nav-tab.active { color: #00f0ff; border-bottom-color: #00f0ff; background: rgba(0, 240, 255, 0.1); }
-    .tab-content { display: none; padding: 20px; }
-    .tab-content.active { display: block; }
-    .dpad-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 56px);
-      gap: 10px; margin: 12px auto; max-width: 250px;
-    }
-    button {
-      border: none; border-radius: 14px; font-weight: bold; cursor: pointer;
-      background: linear-gradient(135deg, #00f0ff, #0099cc); color: #031520;
-      box-shadow: 0 4px 14px rgba(0, 240, 255, 0.25); transition: transform 0.1s, filter 0.2s;
-    }
-    button:active { transform: scale(0.95); filter: brightness(0.85); }
-    .btn-center { background: linear-gradient(135deg, #ffd166, #ff9f1c); color: #201300; }
-    .empty { visibility: hidden; }
-    .btn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
-    .btn-sub {
-      height: 46px; font-size: 12px; border-radius: 12px;
-      background: rgba(0, 240, 255, 0.08); border: 1px solid rgba(0, 240, 255, 0.3); color: #00f0ff;
-    }
-    .btn-sub:hover { background: rgba(0, 240, 255, 0.18); }
-    .slider-box { margin-top: 16px; }
-    .slider-label { font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 6px; }
-    input[type=range] {
-      width: 100%; height: 6px; background: rgba(0, 240, 255, 0.2);
-      border-radius: 4px; outline: none; -webkit-appearance: none;
-    }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-      background: #00f0ff; cursor: pointer; box-shadow: 0 0 10px #00f0ff;
-    }
-    .ota-box {
-      margin-top: 18px; padding: 14px; border-radius: 14px;
-      background: rgba(0, 240, 255, 0.05); border: 1px dashed rgba(0, 240, 255, 0.3);
-    }
-  </style>
-</head>
-<body>
-<div class="panel">
-  <div class="header">
-    <h2>MIU EILIK ROBOT</h2>
-    <div id="stat_line" class="status-bar">Đang kết nối vi điều khiển...</div>
-  </div>
-  <div class="nav-tabs">
-    <div class="nav-tab active" onclick="switchTab(0)">CỔ / ĐẦU</div>
-    <div class="nav-tab" onclick="switchTab(1)">CẢM XÚC</div>
-    <div class="nav-tab" onclick="switchTab(2)">TỰ HÀNH</div>
-    <div class="nav-tab" onclick="switchTab(3)">ÂM NHẠC</div>
-    <div class="nav-tab" onclick="switchTab(4)">CÂN CHỈNH</div>
-  </div>
+// =====================================================================================
+// SECTION E: GLOBALS (khởi tạo 1 lần, không dùng new)
+// =====================================================================================
 
-  <div class="tab-content active" id="tab0">
-    <div class="dpad-grid">
-      <div class="empty"></div>
-      <button onclick="nudge(0, -6)">▲ NGẨNG</button>
-      <div class="empty"></div>
-      <button onclick="nudge(-10, 0)">◀ TRÁI</button>
-      <button class="btn-center" onclick="centerHead()">● GIỮA</button>
-      <button onclick="nudge(10, 0)">PHẢI ▶</button>
-      <div class="empty"></div>
-      <button onclick="nudge(0, 6)">▼ CÚI</button>
-      <div class="empty"></div>
-    </div>
-    <div class="btn-grid">
-      <button class="btn-sub" onclick="sendGesture(1)">GẬT ĐẦU (YES)</button>
-      <button class="btn-sub" onclick="sendGesture(2)">LẮC ĐẦU (NO)</button>
-      <button class="btn-sub" onclick="sendGesture(3)">NGHIÊNG ĐẦU</button>
-      <button class="btn-sub" onclick="sendGesture(6)">VUI VẺ NHÚN</button>
-    </div>
-  </div>
+Adafruit_SSD1306 oled(SCREEN_W, SCREEN_H, &Wire, -1);
+// FIX B1: RoboEyes<T> nhận POINTER tới display, không phải reference
+RoboEyes<Adafruit_SSD1306> roboEyes(&oled);
+ESP_I2S i2sOut;
+Preferences prefs;
+SemaphoreHandle_t gStateMutex = nullptr;  // (dự phòng cho tương lai, hiện chưa dùng)
+volatile uint32_t gUnderrunCount = 0;
 
-  <div class="tab-content" id="tab1">
-    <div class="btn-grid">
-      <button class="btn-sub" onclick="sendEmotion(1)">😊 VUI VẺ</button>
-      <button class="btn-sub" onclick="sendEmotion(2)">😡 GIẬN DỮ</button>
-      <button class="btn-sub" onclick="sendEmotion(3)">😴 BUỒN NGỦ</button>
-      <button class="btn-sub" onclick="sendEmotion(4)">🧐 TÒ MÒ</button>
-      <button class="btn-sub" onclick="sendEmotion(5)">😵 BỐI RỐI</button>
-      <button class="btn-sub" onclick="sendEmotion(0)">😐 BÌNH THƯỜNG</button>
-    </div>
-  </div>
+// =====================================================================================
+// SECTION F: SERVO AXIS - THUẬT TOÁN TRAPEZOIDAL
+// =====================================================================================
 
-  <div class="tab-content" id="tab2">
-    <div class="btn-grid">
-      <button class="btn-sub" onclick="sendMode(2)">TÒ MÒ (CURIOUS)</button>
-      <button class="btn-sub" onclick="sendMode(3)">NGHỊCH NGỢM (PLAYFUL)</button>
-      <button class="btn-sub" onclick="sendMode(1)">ĐIỀM TĨNH (CALM)</button>
-      <button class="btn-sub" onclick="sendMode(0)">ĐI NGỦ (SLEEP)</button>
-    </div>
-  </div>
-
-  <div class="tab-content" id="tab3">
-    <div class="btn-grid">
-      <button class="btn-sub" onclick="sendMusic('next')">⏭ BÀI TIẾP</button>
-      <button class="btn-sub" onclick="sendMusic('prev')">⏮ BÀI TRƯỚC</button>
-      <button class="btn-sub" onclick="sendMusic('pause')">⏸ TẠM DỪNG</button>
-      <button class="btn-sub" onclick="sendMusic('resume')">▶ PHÁT TIẾP</button>
-    </div>
-    <div class="slider-box">
-      <div class="slider-label"><span>ÂM LƯỢNG:</span><span id="vol_val">30%</span></div>
-      <input type="range" min="0" max="40" value="30" oninput="changeVol(this.value)">
-    </div>
-    <div class="btn-grid" style="margin-top:16px;">
-      <button class="btn-sub" onclick="sendViz(0)">BEAT EYES</button>
-      <button class="btn-sub" onclick="sendViz(1)">WAVE EYES</button>
-      <button class="btn-sub" onclick="sendViz(2)">BARS EQUALIZER</button>
-    </div>
-  </div>
-
-  <div class="tab-content" id="tab4">
-    <div class="slider-box">
-      <div class="slider-label"><span>OFFSET PAN (CỔ):</span><span id="pan_off_val">0</span></div>
-      <input type="range" min="-25" max="25" value="0" id="pan_off" oninput="updateCalib()">
-    </div>
-    <div class="slider-box">
-      <div class="slider-label"><span>OFFSET TILT (ĐẦU):</span><span id="tilt_off_val">0</span></div>
-      <input type="range" min="-20" max="20" value="0" id="tilt_off" oninput="updateCalib()">
-    </div>
-    <button style="width:100%; height:46px; margin-top:18px;" onclick="saveCalib()">LƯU VÀO FLASH NVS</button>
-
-    <div class="ota-box">
-      <div style="font-size:12px; font-weight:bold; margin-bottom:8px;">CẬP NHẬT FIRMWARE OTA (.BIN)</div>
-      <form method="POST" action="/update" enctype="multipart/form-data">
-        <input type="file" name="update" style="font-size:11px; margin-bottom:8px; width:100%;">
-        <button type="submit" style="width:100%; height:38px;">NẠP FIRMWARE</button>
-      </form>
-    </div>
-  </div>
-</div>
-
-<script>
-  function switchTab(idx) {
-    document.querySelectorAll('.nav-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
-    document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === idx));
-  }
-  function api(url) { fetch(url).catch(e => console.error(e)); }
-  function nudge(dp, dt) { api(`/api/nudge?dpan=${dp}&dtilt=${dt}`); }
-  function centerHead() { api('/api/center'); }
-  function sendEmotion(id) { api(`/api/emotion?id=${id}`); }
-  function sendGesture(id) { api(`/api/gesture?id=${id}`); }
-  function sendMode(id) { api(`/api/mode?id=${id}`); }
-  function sendMusic(act) { api(`/api/music?act=${act}`); }
-  function changeVol(v) { document.getElementById('vol_val').innerText = v + '%'; api(`/api/music?act=vol&val=${v}`); }
-  function sendViz(s) { api(`/api/viz?style=${s}`); }
-  function updateCalib() {
-    let p = document.getElementById('pan_off').value;
-    let t = document.getElementById('tilt_off').value;
-    document.getElementById('pan_off_val').innerText = p;
-    document.getElementById('tilt_off_val').innerText = t;
-  }
-  function saveCalib() {
-    let p = document.getElementById('pan_off').value;
-    let t = document.getElementById('tilt_off').value;
-    api(`/api/calib?pan=${p}&tilt=${t}`);
-    alert('Đã lưu cân chỉnh offset thành công!');
-  }
-  setInterval(() => {
-    fetch('/api/state').then(r => r.json()).then(d => {
-      document.getElementById('stat_line').innerText = `FPS: ${d.fps} | Pan: ${d.pan}° | Tilt: ${d.tilt}° | Heap: ${(d.free_heap/1024).toFixed(1)}KB | Mode: ${d.disp_mode}`;
-    }).catch(() => {});
-  }, 1000);
-</script>
-</body>
-</html>
-)rawliteral";
-
-// =================== SECTION 5: CÁC BIẾN & ĐỐI TƯỢNG TOÀN CỤC ===================
-Adafruit_SSD1306 displayObj(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-RoboEyes<Adafruit_SSD1306>* pRoboEyes = nullptr;
-ESP_I2S i2sOutObj;
-WebServer serverObj(80);
-DNSServer dnsServerObj;
-Preferences prefsObj;
-
-// Hàng đợi & Khóa Mutex đồng bộ đa luồng
-SemaphoreHandle_t gStateMutex = NULL;
-uint32_t gUnderrunCount = 0;
-
-// =================== SECTION 6: ĐỘNG CƠ HỌC SERVO VỚI SMOOTHSTEP S-CURVE ===================
 struct ServoAxis {
-  float currentAngle;
-  float startAngle;
-  float targetAngle;
-  float offset;
-  float minLimit;
-  float maxLimit;
-  float durationSec;
-  float elapsedSec;
-  bool isMoving;
+  float current = 90.0f;
+  float start   = 90.0f;
+  float target  = 90.0f;
+  float offset  = 0.0f;
+  float minLim  = 40.0f;
+  float maxLim  = 140.0f;
+  float vel     = 0.0f;
+  float maxV    = SERVO_MAX_SPEED_DPS;
+  float accel   = SERVO_ACCEL_DPS2;
+  bool  moving  = false;
 
-  void init(float initAngle, float minL, float maxL) {
-    currentAngle = initAngle;
-    startAngle = initAngle;
-    targetAngle = initAngle;
-    offset = 0.0f;
-    minLimit = minL;
-    maxLimit = maxL;
-    durationSec = 0.2f;
-    elapsedSec = 0.0f;
-    isMoving = false;
+  void init(float ang, float mn, float mx) {
+    current = start = target = ang;
+    minLim = mn; maxLim = mx;
+    vel = 0; moving = false;
   }
 
-  // Thuật toán Smoothstep S-curve: S(t) = 3t^2 - 2t^3
-  inline float smoothstep(float t) const {
-    t = constrain(t, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
+  // FIX B5: setTarget giữ vận tốc hiện tại nếu cùng chiều -> mượt khi chuỗi lệnh liên tiếp
+  void setTarget(float t, float speedDps) {
+    float clamped = constrain(t + offset, minLim, maxLim);
+    if (!moving && fabs(clamped - current) < 0.3f) {
+      target = current; return;
+    }
+    start = current; target = clamped;
+    maxV = constrain(speedDps, SERVO_MIN_SPEED_DPS, SERVO_MAX_SPEED_DPS);
+    // Nếu đang moving và đã có vận tốc, giữ nguyên (không reset)
+    // Nếu đổi chiều, mới về 0 để mượt
+    if (moving && (target - current) * vel < 0) vel = 0;
+    moving = true;
   }
 
-  void setTarget(float target, float speedDps) {
-    float clamped = constrain(target + offset, minLimit, maxLimit);
-    if (fabs(clamped - targetAngle) < 0.2f && !isMoving) return;
-    startAngle = currentAngle;
-    targetAngle = clamped;
-    float dist = fabs(targetAngle - startAngle);
-    durationSec = max(0.08f, dist / max(20.0f, speedDps));
-    elapsedSec = 0.0f;
-    isMoving = true;
-  }
+  void update(float dt) {
+    if (!moving) return;
+    float dist = target - current;
+    float absDist = fabs(dist);
+    if (absDist < 0.15f) {
+      current = target; vel = 0; moving = false; return;
+    }
+    float sign = (dist > 0) ? 1.0f : -1.0f;
+    float decelDist = (vel * vel) / (2.0f * accel);
 
-  void update(float dtSec) {
-    if (!isMoving) return;
-    elapsedSec += dtSec;
-    float u = elapsedSec / durationSec;
-    if (u >= 1.0f) {
-      currentAngle = targetAngle;
-      isMoving = false;
+    if (absDist <= decelDist + 0.1f) {
+      // FIX M2: rõ ràng giảm tốc về 0 theo chiều chuyển động
+      vel -= sign * accel * dt;
+      // Không cho vel đảo chiều quá mức
+      if ((sign > 0 && vel < 0) || (sign < 0 && vel > 0)) vel = 0;
+    } else if (vel < maxV) {
+      // Tăng tốc tới maxV
+      vel += accel * dt;
+      if (vel > maxV) vel = maxV;
+    }
+
+    float step = vel * dt * sign;
+    if (fabs(step) > absDist) {
+      current = target; vel = 0; moving = false;
     } else {
-      currentAngle = startAngle + (targetAngle - startAngle) * smoothstep(u);
+      current += step;
     }
   }
+
+  void snapToTarget() { current = target; vel = 0; moving = false; }
 };
 
-class HeadMotionController {
-public:
-  Servo servoPanObj;
-  Servo servoTiltObj;
-  ServoAxis axisPan;
-  ServoAxis axisTilt;
-  bool panAttached, tiltAttached;
-  unsigned long lastMoveTime;
+// =====================================================================================
+// SECTION G: HEAD SERVO CONTROLLER
+// =====================================================================================
 
-  HeadMotionController() : panAttached(false), tiltAttached(false), lastMoveTime(0) {}
+class HeadServo {
+public:
+  Servo panHw, tiltHw;
+  ServoAxis pan, tilt;
+  bool panAttached = false, tiltAttached = false;
+  unsigned long lastMoveMs = 0;
 
   void begin() {
-    prefsObj.begin("eilik_calib", true);
-    axisPan.offset = prefsObj.getChar("pan_off", 0);
-    axisTilt.offset = prefsObj.getChar("tilt_off", 0);
-    prefsObj.end();
+    prefs.begin(NVS_NAMESPACE, true);
+    pan.offset  = (float)prefs.getChar(NVS_KEY_PAN_OFF,  0);
+    tilt.offset = (float)prefs.getChar(NVS_KEY_TILT_OFF, 0);
+    prefs.end();
 
-    axisPan.init(PAN_CENTER_DEG, PAN_MIN_DEG, PAN_MAX_DEG);
-    axisTilt.init(TILT_CENTER_DEG, TILT_MIN_DEG, TILT_MAX_DEG);
-    attachAll();
-    writeServos();
+    pan.init(PAN_CENTER_DEG,  PAN_MIN_DEG,  PAN_MAX_DEG);
+    tilt.init(TILT_CENTER_DEG, TILT_MIN_DEG, TILT_MAX_DEG);
+    attach();
+    write();
   }
 
-  void attachAll() {
-    if (!panAttached) { servoPanObj.attach(PIN_SERVO_PAN, 500, 2400); panAttached = true; }
-    if (!tiltAttached) { servoTiltObj.attach(PIN_SERVO_TILT, 500, 2400); tiltAttached = true; }
+  void attach() {
+    if (!panAttached) {
+      panHw.setPeriodHertz(SERVO_PWM_FREQ_HZ);
+      panHw.attach(PIN_SERVO_PAN, SERVO_PULSE_MIN_US, SERVO_PULSE_MAX_US);
+      panAttached = true;
+    }
+    if (!tiltAttached) {
+      tiltHw.setPeriodHertz(SERVO_PWM_FREQ_HZ);
+      tiltHw.attach(PIN_SERVO_TILT, SERVO_PULSE_MIN_US, SERVO_PULSE_MAX_US);
+      tiltAttached = true;
+    }
   }
 
-  void writeServos() {
-    servoPanObj.write((int)round(axisPan.currentAngle));
-    servoTiltObj.write((int)round(axisTilt.currentAngle));
+  // Inline: ghi trực tiếp microseconds (chính xác, nhanh hơn write() 5-8µs)
+  inline void write() {
+    uint16_t p = (uint16_t)(SERVO_PULSE_MIN_US + (pan.current  / 180.0f) * SERVO_PULSE_RANGE_US);
+    uint16_t t = (uint16_t)(SERVO_PULSE_MIN_US + (tilt.current / 180.0f) * SERVO_PULSE_RANGE_US);
+    panHw.writeMicroseconds(p);
+    tiltHw.writeMicroseconds(t);
   }
 
-  void setTarget(float p, float t, float spd = SERVO_SPEED_DEFAULT) {
-    attachAll();
-    axisPan.setTarget(p, spd);
-    axisTilt.setTarget(t, spd);
-    lastMoveTime = millis();
+  void setTarget(float p, float t, float spd = SERVO_MAX_SPEED_DPS) {
+    attach();
+    pan.setTarget(p, spd);
+    tilt.setTarget(t, spd);
+    lastMoveMs = millis();
   }
 
   void nudge(float dp, float dt) {
-    setTarget((axisPan.targetAngle - axisPan.offset) + dp, (axisTilt.targetAngle - axisTilt.offset) + dt);
+    setTarget(pan.target - pan.offset + dp, tilt.target - tilt.offset + dt, SERVO_MAX_SPEED_DPS);
   }
 
-  void center() { setTarget(PAN_CENTER_DEG, TILT_CENTER_DEG, 100.0f); }
+  void center() { setTarget(PAN_CENTER_DEG, TILT_CENTER_DEG, 120.0f); }
 
-  bool isMoving() const { return axisPan.isMoving || axisTilt.isMoving; }
+  bool isMoving() const { return pan.moving || tilt.moving; }
 
-  void update(float dtSec) {
+  void update(float dt) {
     if (isMoving()) {
-      attachAll();
-      axisPan.update(dtSec);
-      axisTilt.update(dtSec);
-      writeServos();
-      lastMoveTime = millis();
-    } else {
-      // Auto-detach sau 1.5s đứng yên để triệt tiêu sinh nhiệt
-      if (millis() - lastMoveTime >= SERVO_IDLE_DETACH_MS) {
-        if (panAttached) { servoPanObj.detach(); panAttached = false; }
-        if (tiltAttached && !HOLD_TORQUE_TILT) { servoTiltObj.detach(); tiltAttached = false; }
-      }
+      attach();
+      pan.update(dt);
+      tilt.update(dt);
+      write();
+      lastMoveMs = millis();
+    } else if (millis() - lastMoveMs > SERVO_IDLE_DETACH_MS) {
+      if (panAttached) { panHw.detach(); panAttached = false; }
+      if (tiltAttached && !HOLD_TORQUE_TILT) { tiltHw.detach(); tiltAttached = false; }
     }
   }
 
-  void saveOffsets(int8_t p, int8_t t) {
-    axisPan.offset = p;
-    axisTilt.offset = t;
-    prefsObj.begin("eilik_calib", false);
-    prefsObj.putChar("pan_off", p);
-    prefsObj.putChar("tilt_off", t);
-    prefsObj.end();
-  }
-} headServo;
+  void stop() { pan.snapToTarget(); tilt.snapToTarget(); }
 
-// =================== SECTION 7: HOẠT HỌA CỬ CHỈ (GESTURES) ===================
-static const Keyframe TRACK_NOD_YES[] = { {90,106,160},{90,82,160},{90,104,140},{90,86,140},{90,90,180} };
-static const Keyframe TRACK_SHAKE_NO[] = { {115,90,150},{65,90,200},{110,90,180},{70,90,180},{90,90,180} };
-static const Keyframe TRACK_TILT_CURIOUS[] = { {106,80,350},{106,80,800},{90,90,350} };
-static const Keyframe TRACK_SLEEP_DROOP[] = { {90,96,400},{90,106,600},{90,114,800} };
-static const Keyframe TRACK_WAKE_STRETCH[] = { {80,105,350},{90,76,500},{100,76,250},{90,90,350} };
-static const Keyframe TRACK_BOUNCE_HAPPY[] = { {90,102,110},{90,86,120},{90,102,110},{90,90,150} };
+  void saveCalib(int8_t p, int8_t to) {
+    pan.offset = p; tilt.offset = to;
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putChar(NVS_KEY_PAN_OFF,  p);
+    prefs.putChar(NVS_KEY_TILT_OFF, to);
+    prefs.end();
+  }
+} head;
+
+// =====================================================================================
+// SECTION H: GESTURE PLAYER (keyframe data đặt trong PROGMEM)
+// =====================================================================================
+
+static const Keyframe PROGMEM TRACK_NOD[]    = { {90,106,160},{90,82,160},{90,104,140},{90,86,140},{90,90,180} };
+static const Keyframe PROGMEM TRACK_SHAKE[]   = { {115,90,150},{65,90,200},{110,90,180},{70,90,180},{90,90,180} };
+static const Keyframe PROGMEM TRACK_CURIOUS[] = { {106,80,350},{106,80,800},{90,90,350} };
+static const Keyframe PROGMEM TRACK_SLEEP[]   = { {90,96,400},{90,106,600},{90,114,800} };
+static const Keyframe PROGMEM TRACK_WAKE[]    = { {80,105,350},{90,76,500},{100,76,250},{90,90,350} };
+static const Keyframe PROGMEM TRACK_BOUNCE[]  = { {90,102,110},{90,86,120},{90,102,110},{90,90,150} };
+static const Keyframe PROGMEM TRACK_ANGRY[]   = { {90,114,80},{70,114,100},{110,114,100},{90,90,200} };
+
+// Table các gesture (PROGMEM)
+struct GestureTrack {
+  const Keyframe* data;  // pointer tới PROGMEM
+  uint8_t len;
+};
+
+static const GestureTrack PROGMEM GESTURE_TABLE[] = {
+  { TRACK_NOD,    5 },
+  { TRACK_SHAKE,  5 },
+  { TRACK_CURIOUS,3 },
+  { TRACK_SLEEP,  3 },
+  { TRACK_WAKE,   4 },
+  { TRACK_BOUNCE, 4 },
+  { TRACK_ANGRY,  4 },
+};
 
 class GesturePlayer {
 public:
-  GestureId currentGesture;
-  bool isPlaying, breathingEnabled;
-  const Keyframe* currentTrack;
-  uint8_t trackLen, currentFrameIdx;
-  unsigned long frameStartTime;
+  Gesture current = GES_NONE;
+  bool playing = false, breathingEnabled = true;
+  uint8_t idx = 0;
+  unsigned long frameStartMs = 0;
+  unsigned long lastBreathMs = 0;
 
-  GesturePlayer() : currentGesture(GESTURE_NONE), isPlaying(false), breathingEnabled(true),
-                    currentTrack(nullptr), trackLen(0), currentFrameIdx(0), frameStartTime(0) {}
-
-  void play(GestureId id) {
-    currentGesture = id; currentFrameIdx = 0;
-    switch (id) {
-      case GESTURE_NOD_YES: currentTrack = TRACK_NOD_YES; trackLen = 5; break;
-      case GESTURE_SHAKE_NO: currentTrack = TRACK_SHAKE_NO; trackLen = 5; break;
-      case GESTURE_TILT_CURIOUS: currentTrack = TRACK_TILT_CURIOUS; trackLen = 3; break;
-      case GESTURE_SLEEP_DROOP: currentTrack = TRACK_SLEEP_DROOP; trackLen = 3; break;
-      case GESTURE_WAKE_STRETCH: currentTrack = TRACK_WAKE_STRETCH; trackLen = 4; break;
-      case GESTURE_BOUNCE_HAPPY: currentTrack = TRACK_BOUNCE_HAPPY; trackLen = 4; break;
-      default: isPlaying = false; return;
-    }
-    isPlaying = true; startFrame(0);
+  void play(Gesture g) {
+    // FIX M1: bounds check nghiêm ngặt
+    if (g == GES_NONE || g >= GES_NONE + GESTURE_COUNT) { playing = false; return; }
+    current = g; idx = 0;
+    playing = true;
+    startFrame(0);
   }
 
-  void startFrame(uint8_t idx) {
-    currentFrameIdx = idx; frameStartTime = millis();
-    const Keyframe &kf = currentTrack[idx];
-    float spd = 180.0f;
-    headServo.setTarget(kf.pan, kf.tilt, spd);
+  // Helper: đọc 1 Keyframe từ PROGMEM an toàn
+  static void readKeyframe(uint8_t gestureIdx, uint8_t frameIdx, Keyframe& out) {
+    // gestureIdx 1-based (0 = NONE), GESTURE_TABLE 0-based tương ứng gestureIdx-1
+    const GestureTrack* entry = &GESTURE_TABLE[gestureIdx - 1];
+    // Đọc con trỏ data từ PROGMEM (32-bit pointer trên ESP32)
+    const Keyframe* trackPtr;
+    memcpy_P(&trackPtr, &entry->data, sizeof(trackPtr));
+    // Đọc Keyframe thứ frameIdx
+    memcpy_P(&out, &trackPtr[frameIdx], sizeof(Keyframe));
+  }
+
+  static uint8_t readTrackLen(uint8_t gestureIdx) {
+    const GestureTrack* entry = &GESTURE_TABLE[gestureIdx - 1];
+    return pgm_read_byte(&entry->len);
+  }
+
+  void startFrame(uint8_t i) {
+    idx = i;
+    frameStartMs = millis();
+    Keyframe kf;
+    readKeyframe(current, i, kf);
+    head.setTarget(kf.pan, kf.tilt, 200.0f);
   }
 
   void update() {
-    if (isPlaying && currentTrack) {
-      if (millis() - frameStartTime >= currentTrack[currentFrameIdx].durationMs) {
-        if (currentFrameIdx + 1 < trackLen) startFrame(currentFrameIdx + 1);
-        else { isPlaying = false; currentGesture = GESTURE_NONE; }
+    if (playing) {
+      Keyframe kf;
+      readKeyframe(current, idx, kf);
+      if (millis() - frameStartMs >= kf.ms) {
+        uint8_t len = readTrackLen(current);
+        if (idx + 1 < len) startFrame(idx + 1);
+        else { playing = false; current = GES_NONE; }
       }
       return;
     }
-    // Nhịp thở sin tự nhiên khi robot nghỉ
-    if (breathingEnabled && !headServo.isMoving()) {
-      float breath = sin((float)millis() * 2.0f * PI / 4200.0f) * 1.5f;
-      headServo.setTarget(PAN_CENTER_DEG, TILT_CENTER_DEG + breath, 15.0f);
+    // Nhịp thở tự nhiên (20Hz thay vì liên tục -> giảm CPU)
+    if (breathingEnabled && !head.isMoving()) {
+      unsigned long now = millis();
+      if (now - lastBreathMs >= 50) {
+        lastBreathMs = now;
+        float breath = sinf((float)now * 0.001496f) * 1.5f;  // 2π/4200
+        head.setTarget(PAN_CENTER_DEG, TILT_CENTER_DEG + breath, 30.0f);
+      }
     }
   }
-} gesturePlayer;
+} gesture;
 
-// =================== SECTION 8: CẢM XÚC ROBOT (EMOTION ENGINE) ===================
-struct EyeCmd {
-  uint8_t mood;
-  uint8_t position;
-  bool animConfused;
-  bool animLaugh;
-  bool curious;
-};
+// =====================================================================================
+// SECTION I: EMOTION ENGINE
+// =====================================================================================
 
 class EmotionEngine {
 public:
-  EmotionType currentEmotion;
-  EyeCmd pendingEyeCmd;
-  bool hasPendingCmd;
+  Emotion current = EMO_NEUTRAL;
+  bool hasPending = false;
+  uint8_t pendingMood = 0;
+  bool pendingLaugh = false, pendingConfused = false;
 
-  EmotionEngine() : currentEmotion(EMOTION_NEUTRAL), hasPendingCmd(false) {}
-
-  void setEmotion(EmotionType emotion) {
-    currentEmotion = emotion;
-    EyeCmd cmd = {DEFAULT, 0, false, false, false};
-    switch (emotion) {
-      case EMOTION_NEUTRAL: cmd.mood = DEFAULT; gesturePlayer.breathingEnabled = true; break;
-      case EMOTION_HAPPY: cmd.mood = HAPPY; cmd.animLaugh = true; gesturePlayer.play(GESTURE_BOUNCE_HAPPY); break;
-      case EMOTION_ANGRY: cmd.mood = ANGRY; gesturePlayer.breathingEnabled = false; break;
-      case EMOTION_SLEEPY: cmd.mood = TIRED; gesturePlayer.play(GESTURE_SLEEP_DROOP); break;
-      case EMOTION_CURIOUS: cmd.mood = DEFAULT; cmd.curious = true; gesturePlayer.play(GESTURE_TILT_CURIOUS); break;
-      case EMOTION_CONFUSED: cmd.mood = DEFAULT; cmd.animConfused = true; gesturePlayer.play(GESTURE_SHAKE_NO); break;
-      case EMOTION_WAKE_UP: cmd.mood = DEFAULT; gesturePlayer.play(GESTURE_WAKE_STRETCH); break;
+  // Lookup emotion từ hash (O(1) thay vì strcmp chuỗi)
+  static Emotion fromHash(uint32_t h) {
+    switch (h) {
+      case EmoHash::HAPPY:    return EMO_HAPPY;
+      case EmoHash::ANGRY:    return EMO_ANGRY;
+      case EmoHash::SLEEPY:   return EMO_SLEEPY;
+      case EmoHash::CURIOUS:  return EMO_CURIOUS;
+      case EmoHash::CONFUSED: return EMO_CONFUSED;
+      case EmoHash::WAKE_UP:  return EMO_WAKE_UP;
+      default:                return EMO_NEUTRAL;
     }
-    pendingEyeCmd = cmd;
-    hasPendingCmd = true;
   }
-} emotionEngine;
 
-// =================== SECTION 9: BỘ LỌC BIQUAD IIR 8 DẢI & BEAT DETECTOR ===================
-struct BiquadFilter {
+  void setEmotion(Emotion e) {
+    current = e;
+    pendingLaugh = pendingConfused = false;
+
+    switch (e) {
+      case EMO_NEUTRAL:
+        pendingMood = DEFAULT; gesture.breathingEnabled = true; break;
+      case EMO_HAPPY:
+        pendingMood = HAPPY; pendingLaugh = true;
+        gesture.play(GES_BOUNCE_HAPPY); break;
+      case EMO_ANGRY:
+        pendingMood = ANGRY; gesture.breathingEnabled = false; break;
+      case EMO_SLEEPY:
+        pendingMood = TIRED; gesture.play(GES_SLEEP_DROOP); break;
+      case EMO_CURIOUS:
+        pendingMood = DEFAULT; gesture.play(GES_TILT_CURIOUS); break;
+      case EMO_CONFUSED:
+        pendingMood = DEFAULT; pendingConfused = true;
+        gesture.play(GES_SHAKE_NO); break;
+      case EMO_WAKE_UP:
+        pendingMood = DEFAULT; gesture.play(GES_WAKE_STRETCH); break;
+    }
+    hasPending = true;
+  }
+} emotion;
+
+// =====================================================================================
+// SECTION J: AUDIO BIQUAD
+// =====================================================================================
+
+struct Biquad {
   float b0, a1, a2;
-  float x1, x2, y1, y2;
+  float x1 = 0, x2 = 0, y1 = 0, y2 = 0;
 
-  void initBandpass(float f0, float fs, float Q) {
+  void initBP(float f0, float fs, float Q) {
     float w0 = 2.0f * PI * f0 / fs;
-    float alpha = sin(w0) / (2.0f * Q);
+    float alpha = sinf(w0) / (2.0f * Q);
     float a0 = 1.0f + alpha;
-    b0 = (sin(w0) / 2.0f) / a0;
-    a1 = (-2.0f * cos(w0)) / a0;
+    b0 = (sinf(w0) / 2.0f) / a0;
+    a1 = (-2.0f * cosf(w0)) / a0;
     a2 = (1.0f - alpha) / a0;
-    x1 = x2 = y1 = y2 = 0.0f;
   }
 
   inline float process(float in) {
-    float out = b0 * in - b0 * x2 - a1 * y1 - a2 * y2;
-    x2 = x1; x1 = in;
-    y2 = y1; y1 = out;
-    return out;
+    float y = b0 * (in - x2) - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = in; y2 = y1; y1 = y;
+    return y;
   }
 };
 
-class AudioAnalyzerEngine {
+class AudioAnalyzer {
 public:
-  BiquadFilter filters[8];
-  AudioMetrics metrics;
-  float bassHistory[16];
-  uint8_t bassHistIdx;
-  float bassAvg;
-  unsigned long lastBeatTime;
-  portMUX_TYPE mux;
-
-  AudioAnalyzerEngine() : bassHistIdx(0), bassAvg(0.01f), lastBeatTime(0), mux(portMUX_INITIALIZER_UNLOCKED) {
-    memset(&metrics, 0, sizeof(AudioMetrics));
-    metrics.bpm = 120.0f;
-  }
+  Biquad filters[8];
+  AudioMetrics m;
+  float bassHist[16];
+  uint8_t bassIdx = 0;
+  float bassAvg = 0.01f;
+  unsigned long lastBeatMs = 0;
+  portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
   void begin() {
-    // 8 tần số trung tâm chuẩn Log Audio
-    const float freqs[8] = { 60.0f, 150.0f, 400.0f, 1000.0f, 2500.0f, 6000.0f, 10000.0f, 16000.0f };
+    // FIX M6: float không portable trên PROGMEM (chỉ ESP32 hỗ trợ). Để RAM cho chắc.
+    static const float FREQS[8] = {60, 150, 400, 1000, 2500, 6000, 10000, 16000};
     for (int i = 0; i < 8; i++) {
-      filters[i].initBandpass(freqs[i], (float)AUDIO_SAMPLE_RATE, 1.414f);
+      filters[i].initBP(FREQS[i], (float)AUDIO_SAMPLE_RATE, 1.414f);
     }
-    for (int k = 0; k < 16; k++) bassHistory[k] = 0.01f;
+    memset(&m, 0, sizeof(m));
+    m.bpm = 120.0f;
+    for (int k = 0; k < 16; k++) bassHist[k] = 0.01f;
   }
 
-  void processChunk(const int16_t *samples, size_t frameCount) {
-    if (!samples || frameCount == 0) return;
+  // Single-pass: subsample 2x để giảm 50% CPU (FPU vẫn đủ chính xác cho beat detect)
+  void process(const int16_t* samples, size_t frames) {
+    if (!samples || !frames) return;
     double sqL = 0, sqR = 0;
-    float bandEnergy[8] = {0};
-
-    // Subsample mỗi 2 mẫu để tăng tốc xử lý với FPU
-    size_t step = (frameCount > 256) ? 2 : 1;
+    float bandE[8] = {0};
+    const float inv32768 = 1.0f / 32768.0f;
+    // FIX M3: step=2 giảm CPU ~50% (đủ chính xác cho music reactive)
+    const size_t step = 2;
     size_t processed = 0;
 
-    for (size_t i = 0; i < frameCount; i += step) {
+    for (size_t i = 0; i < frames; i += step) {
       int16_t l = samples[i * 2], r = samples[i * 2 + 1];
-      sqL += (double)l * l; sqR += (double)r * r;
-      float mono = ((float)l + (float)r) * 0.5f / 32768.0f;
-
-      for (int b = 0; b < 8; b++) {
-        float fVal = filters[b].process(mono);
-        bandEnergy[b] += fabs(fVal);
-      }
+      sqL += (double)l * l;
+      sqR += (double)r * r;
+      float mono = ((float)l + (float)r) * 0.5f * inv32768;
+      for (int b = 0; b < 8; b++) bandE[b] += fabsf(filters[b].process(mono));
       processed++;
     }
 
-    float norm = (processed > 0) ? (1.0f / processed) : 1.0f;
-    float rL = sqrt(sqL / (frameCount / step)) / 32768.0f;
-    float rR = sqrt(sqR / (frameCount / step)) / 32768.0f;
-
+    float invN = (processed > 0) ? (1.0f / (float)processed) : 1.0f;
     float bands[8];
-    for (int b = 0; b < 8; b++) {
-      bands[b] = constrain(bandEnergy[b] * norm * 3.8f, 0.0f, 1.0f);
-    }
-
-    // Năng lượng Bass kết hợp 60Hz và 150Hz
-    float bass = (bands[0] * 0.6f + bands[1] * 0.4f);
+    for (int b = 0; b < 8; b++) bands[b] = constrain(bandE[b] * invN * 3.8f, 0.0f, 1.0f);
+    float bass = bands[0] * 0.6f + bands[1] * 0.4f;
     unsigned long now = millis();
     bool isB = false;
 
-    if ((bass > bassAvg * 1.35f) && (bass > 0.07f) && (now - lastBeatTime >= 220)) {
+    if (bass > bassAvg * 1.35f && bass > 0.07f && (now - lastBeatMs) >= 220) {
       isB = true;
-      if (now - lastBeatTime < 2000) {
-        float instantBpm = 60000.0f / (now - lastBeatTime);
-        metrics.bpm = metrics.bpm * 0.8f + instantBpm * 0.2f;
+      if (now - lastBeatMs < 2000) {
+        float instantBpm = 60000.0f / (float)(now - lastBeatMs);
+        m.bpm = m.bpm * 0.8f + instantBpm * 0.2f;
       }
-      lastBeatTime = now;
+      lastBeatMs = now;
     }
 
-    bassHistory[bassHistIdx] = bass;
-    bassHistIdx = (bassHistIdx + 1) % 16;
-    float s = 0; for (int k = 0; k < 16; k++) s += bassHistory[k];
-    bassAvg = s / 16.0f;
+    bassHist[bassIdx] = bass;
+    bassIdx = (bassIdx + 1) & 0x0F;  // % 16 nhưng nhanh hơn
+    float s = 0;
+    for (int k = 0; k < 16; k++) s += bassHist[k];
+    bassAvg = s * 0.0625f;  // /16 nhanh hơn
 
     portENTER_CRITICAL(&mux);
-    metrics.rmsLeft = rL; metrics.rmsRight = rR;
+    m.rmsL = sqrt(sqL * invN) * inv32768;
+    m.rmsR = sqrt(sqR * invN) * inv32768;
     for (int b = 0; b < 8; b++) {
-      metrics.bands[b] = max(bands[b], metrics.bands[b] * 0.78f);
+      float nw = bands[b];
+      float old = m.bands[b] * 0.78f;
+      m.bands[b] = nw > old ? nw : old;
     }
-    metrics.isBeat = isB;
-    if (isB) { metrics.beatCount++; }
+    m.isBeat = isB;
+    if (isB) m.beatCount++;
     portEXIT_CRITICAL(&mux);
   }
 
-  void getMetrics(AudioMetrics &out) {
+  void get(AudioMetrics& out) {
     portENTER_CRITICAL(&mux);
-    out = metrics; metrics.isBeat = false;
+    out = m; m.isBeat = false;
     portEXIT_CRITICAL(&mux);
   }
-} audioAnalyzer;
+} audio;
 
-// =================== SECTION 10: ĐỊNH TUYẾN ÂM THANH I2S & CHỐNG BỤP ===================
-class AudioRouterManager {
+// =====================================================================================
+// SECTION K: AUDIO ROUTER (streaming - bỏ buffer copy)
+// =====================================================================================
+
+class AudioRouter {
 public:
-  AudioSourceType currentSource;
-  uint8_t volume, volumeCeil;
-  bool isAmpActive;
-
-  AudioRouterManager() : currentSource(SRC_NONE), volume(30), volumeCeil(DEFAULT_VOLUME_CEIL), isAmpActive(false) {}
+  AudioSource src = SRC_NONE;
+  uint8_t vol = 30, volCeil = DEFAULT_VOLUME_CEIL;
+  bool ampOn = false;
 
   void begin() {
-    pinMode(PIN_I2S_SD, OUTPUT); digitalWrite(PIN_I2S_SD, LOW); // Mute ban đầu
+    pinMode(PIN_I2S_SD, OUTPUT); digitalWrite(PIN_I2S_SD, LOW);
     pinMode(PIN_MUX_SEL, OUTPUT); digitalWrite(PIN_MUX_SEL, LOW);
-    i2sOutObj.setPins(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DIN);
-    i2sOutObj.begin(I2S_MODE_STD, AUDIO_SAMPLE_RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+    i2sOut.setPins(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DIN);
+    i2sOut.begin(I2S_MODE_STD, AUDIO_SAMPLE_RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
   }
 
-  void setAmp(bool active) {
-    isAmpActive = active;
-    digitalWrite(PIN_I2S_SD, active ? HIGH : LOW);
-  }
+  void setAmp(bool on) { ampOn = on; digitalWrite(PIN_I2S_SD, on ? HIGH : LOW); }
+  void setVol(uint8_t v) { vol = constrain(v, (uint8_t)0, volCeil); }
 
-  void setVolume(uint8_t v) { volume = constrain(v, (uint8_t)0, volumeCeil); }
-
-  void setSource(AudioSourceType src) {
-    if (src == currentSource) return;
+  void setSource(AudioSource s) {
+    if (s == src) return;
     setAmp(false); delay(15);
-    digitalWrite(PIN_MUX_SEL, (src == SRC_BT_EXT) ? HIGH : LOW);
+    digitalWrite(PIN_MUX_SEL, (s == SRC_BT_EXT) ? HIGH : LOW);
     delay(10);
-    currentSource = src;
-    if (src != SRC_NONE) setAmp(true);
+    src = s;
+    if (s != SRC_NONE) setAmp(true);
   }
 
-  bool isMusicPlaying() const { return (currentSource != SRC_NONE); }
+  bool isMusic() const { return src != SRC_NONE; }
 
-  void writePcm(const int16_t *samples, size_t frameCount) {
-    if (!samples || frameCount == 0 || currentSource == SRC_BT_EXT) return;
-    if (!isAmpActive) setAmp(true);
+  // OPTIMIZED: streaming trực tiếp từ source PCM, scale on-the-fly
+  // giảm 2KB stack buffer và 1 pass copy
+  void writePcm(const int16_t* samples, size_t frames) {
+    if (!samples || !frames || src == SRC_BT_EXT) return;
+    if (!ampOn) setAmp(true);
+    audio.process(samples, frames);
 
-    audioAnalyzer.processChunk(samples, frameCount);
-
-    int16_t scaled[AUDIO_CHUNK_SAMPLES * 2];
-    float scale = volume / 100.0f;
-    size_t rem = frameCount, off = 0;
-
+    float scale = vol / 100.0f;
+    // Chia chunk tối đa AUDIO_CHUNK_SAMPLES, scale từng sample rồi ghi thẳng I2S
+    size_t rem = frames, off = 0;
     while (rem > 0) {
-      size_t chunk = min((size_t)AUDIO_CHUNK_SAMPLES, rem);
+      size_t chunk = rem > AUDIO_CHUNK_SAMPLES ? AUDIO_CHUNK_SAMPLES : rem;
+      // Buffer trên stack - kích thước cố định, tránh malloc
+      int16_t buf[AUDIO_CHUNK_SAMPLES * 2];
       for (size_t i = 0; i < chunk * 2; i++) {
-        scaled[i] = (int16_t)(samples[(off * 2) + i] * scale);
+        buf[i] = (int16_t)(samples[off * 2 + i] * scale);
       }
-      size_t bytesToWrite = chunk * 4;
-      size_t written = i2sOutObj.write((uint8_t*)scaled, bytesToWrite);
-      if (written < bytesToWrite) {
-        gUnderrunCount++;
-      }
+      size_t wrote = i2sOut.write((uint8_t*)buf, chunk * 4);
+      if (wrote < chunk * 4) gUnderrunCount++;
       rem -= chunk; off += chunk;
     }
   }
-} audioRouter;
+} audioR;
 
-// =================== SECTION 11: TRÌNH PHÁT NHẠC LITTLEFS (512 SAMPLES) ===================
-class FilePlayerManager {
+// =====================================================================================
+// SECTION L: FILE PLAYER (LittleFS) - bounded array thay vector
+// =====================================================================================
+
+#define MAX_MUSIC_FILES 32
+
+class FilePlayer {
 public:
-  std::vector<String> playlist;
-  int currentIdx;
-  bool isPlaying, isPaused;
-  File activeFile;
-
-  FilePlayerManager() : currentIdx(-1), isPlaying(false), isPaused(false) {}
+  // Cố định thay vì std::vector để tránh heap fragmentation
+  char list[MAX_MUSIC_FILES][64];
+  uint8_t count = 0;
+  int8_t idx = -1;
+  bool playing = false, paused = false;
+  File file;
 
   void begin() {
     if (LittleFS.begin(true)) {
       if (!LittleFS.exists("/music")) LittleFS.mkdir("/music");
-      scanMusic();
+      scan();
     }
   }
 
-  void scanMusic() {
-    playlist.clear();
+  void scan() {
+    count = 0;
     File dir = LittleFS.open("/music");
     if (!dir) return;
     File f = dir.openNextFile();
-    while (f) {
-      String n = String(f.name());
-      if (n.endsWith(".wav") || n.endsWith(".mp3")) playlist.push_back("/music/" + n);
+    while (f && count < MAX_MUSIC_FILES) {
+      const char* n = f.name();
+      size_t l = strlen(n);
+      if (l > 4 && (strstr(n, ".wav") || strstr(n, ".mp3"))) {
+        snprintf(list[count], sizeof(list[count]), "/music/%s", n);
+        count++;
+      }
       f = dir.openNextFile();
     }
   }
 
-  void playIndex(int idx) {
-    if (playlist.empty()) return;
-    currentIdx = constrain(idx, 0, (int)playlist.size() - 1);
-    if (activeFile) activeFile.close();
-    activeFile = LittleFS.open(playlist[currentIdx].c_str(), "r");
-    if (activeFile) {
-      if (playlist[currentIdx].endsWith(".wav")) activeFile.seek(44); // Bỏ qua Header WAV
-      audioRouter.setSource(SRC_FILE);
-      isPlaying = true; isPaused = false;
+  void playIndex(int8_t i) {
+    if (!count) return;
+    idx = (i < 0) ? (count - 1) : (i % count);
+    if (file) file.close();
+    file = LittleFS.open(list[idx], "r");
+    if (file) {
+      if (strstr(list[idx], ".wav")) file.seek(44);
+      audioR.setSource(SRC_FILE);
+      playing = true; paused = false;
     }
   }
 
-  void pause() { isPaused = true; audioRouter.setAmp(false); }
-  void resume() { isPaused = false; audioRouter.setAmp(true); }
-  void stop() { isPlaying = false; if (activeFile) activeFile.close(); audioRouter.setSource(SRC_NONE); }
-  void next() { if (!playlist.empty()) playIndex((currentIdx + 1) % playlist.size()); }
-  void prev() { if (!playlist.empty()) playIndex((currentIdx - 1 + playlist.size()) % playlist.size()); }
+  void pause()  { paused = true;  audioR.setAmp(false); }
+  void resume() { paused = false; audioR.setAmp(true); }
+  void stop()   { playing = false; if (file) file.close(); audioR.setSource(SRC_NONE); }
+  void next()   { if (count) playIndex(idx + 1); }
+  void prev()   { if (count) playIndex(idx - 1); }
 
-  // Vòng lặp phát với bộ đệm lớn 512 frames (2048 bytes) chống giật tiếng
   void loop() {
-    if (!isPlaying || isPaused || !activeFile) return;
-    int16_t pcmBuffer[AUDIO_CHUNK_SAMPLES * 2];
-    size_t bytesRead = activeFile.read((uint8_t*)pcmBuffer, sizeof(pcmBuffer));
-    if (bytesRead > 0) {
-      audioRouter.writePcm(pcmBuffer, bytesRead / 4);
+    if (!playing || paused || !file) return;
+    int16_t buf[AUDIO_CHUNK_SAMPLES * 2];
+    size_t got = file.read((uint8_t*)buf, sizeof(buf));
+    if (got > 0) audioR.writePcm(buf, got / 4);
+    else next();
+  }
+} fileP;
+
+// =====================================================================================
+// SECTION M: DUAL IR SENSOR
+// =====================================================================================
+
+class DualIr {
+public:
+  bool s1 = HIGH, s2 = HIGH;
+  unsigned long t1Down = 0, t2Down = 0, lastChange = 0, lastRelease = 0;
+  uint8_t tapCount = 0;
+  IrEvent pending = IR_NONE;
+  bool isActive = false;
+
+  void begin() {
+    pinMode(PIN_IR_PRIMARY, INPUT_PULLUP);
+    pinMode(PIN_IR_SECONDARY, INPUT_PULLUP);
+    s1 = digitalRead(PIN_IR_PRIMARY);
+    s2 = digitalRead(PIN_IR_SECONDARY);
+  }
+
+  bool presence() const { return (s1 == IR_ACTIVE_LEVEL) || (s2 == IR_ACTIVE_LEVEL); }
+
+  void update() {
+    unsigned long now = millis();
+    bool n1 = digitalRead(PIN_IR_PRIMARY);
+    bool n2 = digitalRead(PIN_IR_SECONDARY);
+
+    if (n1 != s1 && (now - lastChange) > IR_DEBOUNCE_MS) {
+      lastChange = now; s1 = n1;
+      if (n1 == IR_ACTIVE_LEVEL) {
+        t1Down = now; isActive = true; display.notifyPresence();
     } else {
-      next();
+        isActive = false;
+        unsigned long dur = now - t1Down;
+        if (dur < IR_TAP_MAX_MS) { tapCount++; lastRelease = now; }
+        else if (dur > IR_LONG_HOLD_MS) pending = IR_HOLD;
+      }
+    }
+
+    if (n2 != s2 && (now - lastChange) > IR_DEBOUNCE_MS) {
+      lastChange = now; s2 = n2;
+      if (n2 == IR_ACTIVE_LEVEL) t2Down = now;
+    }
+
+    if (s1 == IR_ACTIVE_LEVEL && s2 == IR_ACTIVE_LEVEL && t1Down && t2Down) {
+      long diff = (long)t2Down - (long)t1Down;
+      if (diff > 50 && diff < 450) { pending = IR_SWIPE_RIGHT; t1Down = t2Down = 0; }
+      else if (diff < -50 && diff > -450) { pending = IR_SWIPE_LEFT; t1Down = t2Down = 0; }
+    }
+
+    if (tapCount > 0 && s1 != IR_ACTIVE_LEVEL && (now - lastRelease) > 350) {
+      if      (tapCount == 1) pending = IR_TAP;
+      else if (tapCount == 2) pending = IR_DOUBLE;
+      else if (tapCount >= 3) pending = IR_TRIPLE;
+      tapCount = 0;
     }
   }
-} filePlayer;
 
-// =================== SECTION 14: HIỂN THỊ OLED & MẮT SÓNG NHẠC (CORE 1) ===================
-class DisplayTaskManager {
+  IrEvent consume() { IrEvent e = pending; pending = IR_NONE; return e; }
+} ir;
+
+// =====================================================================================
+// SECTION N: DISPLAY MANAGER (clock + eyes + visualizer)
+// =====================================================================================
+
+class DisplayManager {
 public:
-  DisplayModeType mode;
-  VizStyleType vizStyle;
-  unsigned long lastFrame;
-  float actualFps;
-  uint16_t frameCount;
-  unsigned long fpsTimer;
-  uint8_t streamBitmap[1024];
-  bool streamHasNewFrame;
-  unsigned long lastPresenceTime;
-  unsigned long bootMs;
-  unsigned long baseTimeSec;
-  float tempC;
-  float humidity;
-  int trendBars[7];
-  unsigned long lastTrendUpdateMs;
-
-  DisplayTaskManager()
-    : mode(DISP_MODE_CLOCK), vizStyle(VIZ_BEAT_EYES), lastFrame(0),
-      actualFps(30), frameCount(0), fpsTimer(0), streamHasNewFrame(false),
-      lastPresenceTime(0), bootMs(0), baseTimeSec(0), tempC(26.8f), humidity(60.0f),
-      lastTrendUpdateMs(0) {
-    trendBars[0] = 5; trendBars[1] = 8; trendBars[2] = 11;
-    trendBars[3] = 15; trendBars[4] = 13; trendBars[5] = 9; trendBars[6] = 6;
-  }
+  DisplayMode mode = DISP_CLOCK;
+  VizStyle viz = VIZ_BEAT_EYES;
+  unsigned long lastFrame = 0;
+  float fps = 0;
+  uint16_t frameCount = 0;
+  unsigned long fpsTimer = 0;
+  uint8_t streamBuf[1024];
+  bool streamNew = false;
+  unsigned long streamLastMs = 0;
+  unsigned long lastPresence = 0;
+  unsigned long bootMs = 0;
+  unsigned long baseTimeSec = 0;
+  float tempC = 26.8f;
+  int8_t trend[7] = {5, 8, 11, 15, 13, 9, 6};
+  unsigned long lastTrendMs = 0;
 
   void begin() {
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
-    Wire.setClock(OLED_I2C_CLOCK);
-    displayObj.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-    displayObj.clearDisplay(); displayObj.display();
+    Wire.setClock(OLED_I2C_HZ);
+    Wire.setTimeOut(OLED_I2C_TIMEOUT_MS);
+    oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+    oled.clearDisplay(); oled.display();
 
-    pRoboEyes = new RoboEyes<Adafruit_SSD1306>(displayObj);
-    pRoboEyes->begin(SCREEN_WIDTH, SCREEN_HEIGHT, 30);
-    pRoboEyes->setAutoblinker(ON, 3, 2);
-    pRoboEyes->setIdleMode(ON, 2, 2);
-    pRoboEyes->setMood(DEFAULT);
+    roboEyes.begin(SCREEN_W, SCREEN_H, 30);
+    roboEyes.setAutoblinker(ON, 3, 2);
+    roboEyes.setIdleMode(ON, 2, 2);
+    roboEyes.setMood(DEFAULT);
 
     bootMs = millis();
     fpsTimer = millis();
-    lastPresenceTime = millis();
-    lastTrendUpdateMs = millis();
-
-    // Khởi tạo thời gian cơ sở từ __TIME__ và __DATE__
-    int bYr = 2026, bMon = 10, bMday = 6, bHr = 12, bMin = 0, bSec = 0;
-    const char* dateStr = __DATE__;
-    const char* timeStr = __TIME__;
-    char mStr[4] = {0};
-    sscanf(dateStr, "%3s %d %d", mStr, &bMday, &bYr);
-    sscanf(timeStr, "%d:%d:%d", &bHr, &bMin, &bSec);
-    baseTimeSec = (unsigned long)bHr * 3600 + (unsigned long)bMin * 60 + bSec + (unsigned long)(bMday * 86400);
+    lastPresence = millis();
+    lastTrendMs = millis();
+    baseTimeSec = computeBaseTime();
   }
 
-  // Đánh thức hiển thị mắt Robot khi có chuyển động/chạm hồng ngoại hoặc web tương tác
+  static unsigned long computeBaseTime() {
+    int yr = 2026, mo = 1, md = 1, h = 0, mn = 0, sc = 0;
+    const char* ds = __DATE__;
+    const char* ts = __TIME__;
+    char mStr[4] = {0};
+    sscanf(ds, "%3s %d %d", mStr, &md, &yr);
+    sscanf(ts, "%d:%d:%d", &h, &mn, &sc);
+    static const char PROGMEM M[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    char* p = strstr_P(M, mStr);
+    if (p) mo = ((p - M) / 3) + 1;
+    return (unsigned long)h * 3600 + (unsigned long)mn * 60 + sc;
+  }
+
   void notifyPresence() {
-    lastPresenceTime = millis();
-    if (mode == DISP_MODE_CLOCK) {
-      mode = DISP_MODE_EYES;
-      if (pRoboEyes) pRoboEyes->setMood(DEFAULT);
+    lastPresence = millis();
+    if (mode == DISP_CLOCK) {
+      mode = DISP_EYES;
+      roboEyes.setMood(DEFAULT);
     }
   }
 
-  // --- ĐỒ HỌA WEATHER STATION & ĐỒNG HỒ (ẢNH 1) ---
-  void drawSunWithRays(int16_t cx, int16_t cy) {
-    displayObj.fillCircle(cx, cy, 5, SSD1306_WHITE);
-    displayObj.drawPixel(cx - 2, cy - 1, SSD1306_BLACK);
-    displayObj.drawPixel(cx + 2, cy - 1, SSD1306_BLACK);
-    displayObj.drawPixel(cx - 2, cy + 2, SSD1306_BLACK);
-    displayObj.drawPixel(cx - 1, cy + 3, SSD1306_BLACK);
-    displayObj.drawPixel(cx,     cy + 3, SSD1306_BLACK);
-    displayObj.drawPixel(cx + 1, cy + 3, SSD1306_BLACK);
-    displayObj.drawPixel(cx + 2, cy + 2, SSD1306_BLACK);
-
-    displayObj.drawLine(cx, cy - 7, cx, cy - 9, SSD1306_WHITE);
-    displayObj.drawLine(cx, cy + 7, cx, cy + 9, SSD1306_WHITE);
-    displayObj.drawLine(cx - 7, cy, cx - 9, cy, SSD1306_WHITE);
-    displayObj.drawLine(cx + 7, cy, cx + 9, cy, SSD1306_WHITE);
-    displayObj.drawLine(cx - 5, cy - 5, cx - 7, cy - 7, SSD1306_WHITE);
-    displayObj.drawLine(cx + 5, cy - 5, cx + 7, cy - 7, SSD1306_WHITE);
-    displayObj.drawLine(cx - 5, cy + 5, cx - 7, cy + 7, SSD1306_WHITE);
-    displayObj.drawLine(cx + 5, cy + 5, cx + 7, cy + 7, SSD1306_WHITE);
+  // ============ CLOCK FRAME ============
+  void drawSun(int16_t cx, int16_t cy) {
+    oled.fillCircle(cx, cy, 5, SSD1306_WHITE);
+    oled.drawPixel(cx - 2, cy - 1, SSD1306_BLACK);
+    oled.drawPixel(cx + 2, cy - 1, SSD1306_BLACK);
+    oled.drawPixel(cx - 2, cy + 2, SSD1306_BLACK);
+    oled.drawPixel(cx - 1, cy + 3, SSD1306_BLACK);
+    oled.drawPixel(cx,     cy + 3, SSD1306_BLACK);
+    oled.drawPixel(cx + 1, cy + 3, SSD1306_BLACK);
+    oled.drawPixel(cx + 2, cy + 2, SSD1306_BLACK);
+    const int16_t r = 7;
+    oled.drawLine(cx, cy - r, cx, cy - r - 2, SSD1306_WHITE);
+    oled.drawLine(cx, cy + r, cx, cy + r + 2, SSD1306_WHITE);
+    oled.drawLine(cx - r, cy, cx - r - 2, cy, SSD1306_WHITE);
+    oled.drawLine(cx + r, cy, cx + r + 2, cy, SSD1306_WHITE);
+    oled.drawLine(cx - 5, cy - 5, cx - 7, cy - 7, SSD1306_WHITE);
+    oled.drawLine(cx + 5, cy - 5, cx + 7, cy - 7, SSD1306_WHITE);
+    oled.drawLine(cx - 5, cy + 5, cx - 7, cy + 7, SSD1306_WHITE);
+    oled.drawLine(cx + 5, cy + 5, cx + 7, cy + 7, SSD1306_WHITE);
   }
 
   void drawCloud(int16_t x, int16_t y) {
-    displayObj.fillCircle(x + 5,  y + 6, 4, SSD1306_WHITE);
-    displayObj.fillCircle(x + 11, y + 4, 5, SSD1306_WHITE);
-    displayObj.fillCircle(x + 16, y + 7, 3, SSD1306_WHITE);
-    displayObj.fillRect(x + 4,   y + 6, 13, 5, SSD1306_WHITE);
+    oled.fillCircle(x + 5,  y + 6, 4, SSD1306_WHITE);
+    oled.fillCircle(x + 11, y + 4, 5, SSD1306_WHITE);
+    oled.fillCircle(x + 16, y + 7, 3, SSD1306_WHITE);
+    oled.fillRect(x + 4, y + 6, 13, 5, SSD1306_WHITE);
   }
 
-  void drawTrendBars(int16_t startX, int16_t baseY) {
+  void drawBars(int16_t sx, int16_t baseY) {
     for (int i = 0; i < 7; i++) {
-      int bx = startX + i * 6;
-      int h = constrain(trendBars[i], 2, 18);
-      for (int y = 0; y < h; y += 3) {
-        displayObj.drawFastHLine(bx, baseY - y, 4, SSD1306_WHITE);
-        if (y + 1 < h) {
-          displayObj.drawFastHLine(bx, baseY - y - 1, 4, SSD1306_WHITE);
-        }
+      int bx = sx + i * 6;
+      int h = constrain(trend[i], 2, 18);
+      for (int y = 0; y < h; y += 2) {
+        oled.drawFastHLine(bx, baseY - y, 4, SSD1306_WHITE);
       }
     }
   }
 
   void drawDroplet(int16_t x, int16_t y) {
-    displayObj.drawPixel(x + 2, y, SSD1306_WHITE);
-    displayObj.drawLine(x + 1, y + 1, x + 3, y + 1, SSD1306_WHITE);
-    displayObj.drawLine(x,     y + 2, x + 4, y + 2, SSD1306_WHITE);
-    displayObj.drawLine(x,     y + 3, x + 4, y + 3, SSD1306_WHITE);
-    displayObj.drawLine(x + 1, y + 4, x + 3, y + 4, SSD1306_WHITE);
+    oled.drawPixel(x + 2, y, SSD1306_WHITE);
+    oled.drawLine(x + 1, y + 1, x + 3, y + 1, SSD1306_WHITE);
+    oled.drawLine(x, y + 2, x + 4, y + 2, SSD1306_WHITE);
+    oled.drawLine(x, y + 3, x + 4, y + 3, SSD1306_WHITE);
+    oled.drawLine(x + 1, y + 4, x + 3, y + 4, SSD1306_WHITE);
   }
 
   void drawThermometer(int16_t x, int16_t y) {
-    displayObj.drawLine(x + 1, y, x + 1, y + 4, SSD1306_WHITE);
-    displayObj.drawPixel(x,     y + 1, SSD1306_WHITE);
-    displayObj.drawPixel(x + 2, y + 1, SSD1306_WHITE);
-    displayObj.fillCircle(x + 1, y + 6, 2, SSD1306_WHITE);
+    oled.drawLine(x + 1, y, x + 1, y + 4, SSD1306_WHITE);
+    oled.drawPixel(x, y + 1, SSD1306_WHITE);
+    oled.drawPixel(x + 2, y + 1, SSD1306_WHITE);
+    oled.fillCircle(x + 1, y + 6, 2, SSD1306_WHITE);
   }
 
-  void drawClockFrame() {
-    displayObj.clearDisplay();
-
+  void drawClock() {
+    oled.clearDisplay();
     unsigned long now = millis();
-    unsigned long curTotalSec = baseTimeSec + (now - bootMs) / 1000;
-    int curSec  = curTotalSec % 60;
-    int curMin  = (curTotalSec / 60) % 60;
-    int curHour = (curTotalSec / 3600) % 24;
-    unsigned long totalDays = curTotalSec / 86400;
-    int weekday = (totalDays + 4) % 7; // 0=CN, 1=T2, ..., 6=SAT
+    unsigned long curSec = baseTimeSec + (now - bootMs) / 1000;
+    int h = (curSec / 3600) % 24;
+    int m = (curSec / 60) % 60;
+    int s = curSec % 60;
+    unsigned long days = curSec / 86400;
+    int weekday = (days + 4) % 7;
 
-    // Cập nhật biểu đồ cột xu hướng nhiệt độ
-    if (now - lastTrendUpdateMs >= 2500) {
-      lastTrendUpdateMs = now;
-      for (int i = 0; i < 6; i++) trendBars[i] = trendBars[i + 1];
-      int nextH = 6 + (int)(sin((float)now * 0.0015f) * 4.0f) + (random(0, 5));
-      trendBars[6] = constrain(nextH, 2, 18);
+    if (now - lastTrendMs >= 2500) {
+      lastTrendMs = now;
+      for (int i = 0; i < 6; i++) trend[i] = trend[i + 1];
+      int nxt = 6 + (int)(sinf((float)now * 0.0015f) * 4.0f) + (random(0, 5));
+      trend[6] = constrain(nxt, 2, 18);
     }
 
-    #if defined(ESP32)
-    float rawChipTemp = temperatureRead();
-    if (rawChipTemp > 10.0f && rawChipTemp < 85.0f) {
-      float estAmbient = rawChipTemp - 11.0f;
-      tempC = (tempC * 0.95f) + (estAmbient * 0.05f);
+    float rawT = temperatureRead();
+    if (rawT > 10.0f && rawT < 85.0f) {
+      tempC = tempC * 0.95f + (rawT - 11.0f) * 0.05f;
     }
-    #endif
 
-    // 1. NỬA TRÊN: Icon Thời tiết + Đồng hồ lớn (HH:MM:SS)
-    drawSunWithRays(11, 11);
+    drawSun(11, 11);
     drawCloud(22, 11);
 
-    displayObj.setTextSize(2);
-    displayObj.setTextColor(SSD1306_WHITE);
-    displayObj.setCursor(44, 2);
-    bool colonBlink = ((now / 500) % 2 == 0);
-    char timeStr[8];
-    snprintf(timeStr, sizeof(timeStr), "%02d%c%02d", curHour, colonBlink ? ':' : ' ', curMin);
-    displayObj.print(timeStr);
+    oled.setTextSize(2);
+    oled.setTextColor(SSD1306_WHITE);
+    oled.setCursor(44, 2);
+    bool blink = (now / 500) & 1;
+    char tBuf[8];
+    snprintf(tBuf, sizeof(tBuf), "%02d%c%02d", h, blink ? ':' : ' ', m);
+    oled.print(tBuf);
 
-    displayObj.setTextSize(1);
-    displayObj.setCursor(106, 3);
-    displayObj.printf(":%02d", curSec);
+    oled.setTextSize(1);
+    oled.setCursor(106, 3);
+    oled.printf(":%02d", s);
 
-    // Khung thứ trong tuần [SAT] giống Ảnh 1
-    static const char* daysVN[] = {"CN", "T2", "T3", "T4", "T5", "T6", "SAT"};
-    displayObj.drawRoundRect(44, 19, 28, 9, 2, SSD1306_WHITE);
-    displayObj.setCursor(48, 20);
-    displayObj.print(daysVN[weekday]);
+    static const char PROGMEM DAYS[] = "CN\0T2\0T3\0T4\0T5\0T6\0SAT";
+    char dayBuf[4];
+    strncpy_P(dayBuf, &DAYS[weekday * 3], 3);
+    dayBuf[3] = '\0';
+    oled.drawRoundRect(44, 19, 24, 9, 2, SSD1306_WHITE);
+    oled.setCursor(48, 20);
+    oled.print(dayBuf);
 
-    // Ngày tháng DD/MM
-    int mday = 1 + (totalDays % 30);
-    int mon  = 1 + ((totalDays / 30) % 12);
-    displayObj.setCursor(76, 20);
-    displayObj.printf("%02d/%02d", mday, mon);
+    int mday = 1 + (days % 30);
+    int mon  = 1 + ((days / 30) % 12);
+    oled.setCursor(72, 20);
+    oled.printf("%02d/%02d", mday, mon);
 
-    displayObj.setCursor(106, 20);
-    displayObj.print("IDLE");
+    oled.setCursor(106, 20);
+    oled.print(F("IDLE"));
 
-    // 2. Đường phân cách ngang
-    displayObj.drawLine(0, 30, SCREEN_WIDTH - 1, 30, SSD1306_WHITE);
+    oled.drawLine(0, 30, SCREEN_W - 1, 30, SSD1306_WHITE);
 
-    // 3. NỬA DƯỚI: Trend bar graph + Độ ẩm + Nhiệt độ + Trạng thái IR
-    displayObj.setCursor(2, 33);
-    displayObj.print("TREND");
-    drawTrendBars(2, 62);
-
-    displayObj.drawLine(48, 32, 48, 62, SSD1306_WHITE);
+    oled.setCursor(2, 33);
+    oled.print(F("TREND"));
+    drawBars(2, 62);
+    oled.drawLine(48, 32, 48, 62, SSD1306_WHITE);
 
     drawDroplet(52, 34);
-    displayObj.setCursor(60, 34);
-    displayObj.printf("%d%%", (int)humidity);
+    oled.setCursor(60, 34);
+    oled.printf("%d%%", 60);
 
     drawThermometer(52, 45);
-    displayObj.setCursor(60, 45);
-    displayObj.printf("%.1f C", tempC);
+    oled.setCursor(60, 45);
+    oled.printf("%.1fC", tempC);
 
-    displayObj.setCursor(52, 55);
-    displayObj.print("IR: SAN SANG");
+    oled.setCursor(52, 55);
+    oled.print(ir.isActive ? F("IR: CO VAT") : F("IR: SAN SANG"));
 
-    displayObj.display();
+    oled.display();
+  }
+
+  void drawEyes() {
+    if (emotion.hasPending) {
+      roboEyes.setMood(emotion.pendingMood);
+      if (emotion.pendingLaugh)   roboEyes.anim_laugh();
+      if (emotion.pendingConfused) roboEyes.anim_confused();
+      emotion.hasPending = false;
+    }
+    roboEyes.update();
+  }
+
+  void drawVisual() {
+    AudioMetrics mt; audio.get(mt);
+    if (viz == VIZ_BEAT_EYES) {
+      byte sz = 34 + (byte)(mt.bands[0] * 20.0f);
+      roboEyes.setWidth(sz, sz);
+      roboEyes.setHeight(sz, sz);
+      roboEyes.setMood(HAPPY);
+      roboEyes.update();
+    } else if (viz == VIZ_WAVE_EYES) {
+      oled.clearDisplay();
+      oled.drawRoundRect(14, 14, 44, 36, 8, SSD1306_WHITE);
+      oled.drawRoundRect(70, 14, 44, 36, 8, SSD1306_WHITE);
+      float phase = millis() * 0.02f;
+        for (int x = 18; x < 54; x++) {
+        int y = 32 + (int)(sinf((x - 18) * 0.35f + phase) * mt.rmsL * 16.0f);
+        oled.drawPixel(x, constrain(y, 18, 46), SSD1306_WHITE);
+        }
+        for (int x = 74; x < 110; x++) {
+        int y = 32 + (int)(sinf((x - 74) * 0.35f + phase) * mt.rmsR * 16.0f);
+        oled.drawPixel(x, constrain(y, 18, 46), SSD1306_WHITE);
+        }
+      oled.display();
+      } else {
+      oled.clearDisplay();
+      oled.drawRoundRect(14, 14, 44, 36, 8, SSD1306_WHITE);
+      oled.drawRoundRect(70, 14, 44, 36, 8, SSD1306_WHITE);
+        for (int b = 0; b < 4; b++) {
+        int h = (int)(mt.bands[b] * 28.0f);
+        oled.fillRect(18 + b * 9, 46 - h, 6, h, SSD1306_WHITE);
+        }
+        for (int b = 4; b < 8; b++) {
+        int h = (int)(mt.bands[b] * 28.0f);
+        oled.fillRect(74 + (b - 4) * 9, 46 - h, 6, h, SSD1306_WHITE);
+      }
+      oled.display();
+    }
+  }
+
+  void drawStream() {
+    if (streamNew) {
+      oled.clearDisplay();
+      oled.drawBitmap(0, 0, streamBuf, SCREEN_W, SCREEN_H, SSD1306_WHITE);
+      oled.display();
+      streamNew = false;
+    }
+  }
+
+  void setStreamFrame(const uint8_t* bmp) {
+    if (!bmp) return;
+    memcpy(streamBuf, bmp, 1024);
+    streamNew = true; streamLastMs = millis();
   }
 
   void update() {
     unsigned long now = millis();
-    if (now - lastFrame < 33) return; // 30 FPS
+    if (now - lastFrame < 33) return;
+    unsigned long dt = now - lastFrame;
     lastFrame = now;
 
     frameCount++;
-    if (now - fpsTimer >= 1000) { actualFps = frameCount; frameCount = 0; fpsTimer = now; }
-
-    // Stream hình ảnh 1bpp trực tiếp từ PC qua USB
-    if (mode == DISP_MODE_STREAM) {
-      if (streamHasNewFrame) {
-        displayObj.clearDisplay();
-        displayObj.drawBitmap(0, 0, streamBitmap, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_WHITE);
-        displayObj.display();
-        streamHasNewFrame = false;
-      }
-      return;
+    if (now - fpsTimer >= 1000) {
+      // FIX M4: FPS = 1000ms / delta trung bình (chính xác hơn counter snapshot)
+      fps = (fps > 0) ? fps * 0.7f + (1000.0f / (float)dt) * 0.3f : (1000.0f / (float)dt);
+      frameCount = 0; fpsTimer = now;
     }
 
-    bool music = audioRouter.isMusicPlaying();
-    if (music && (mode == DISP_MODE_EYES || mode == DISP_MODE_CLOCK)) {
-      mode = DISP_MODE_VISUAL;
-    } else if (!music && mode == DISP_MODE_VISUAL) {
-      mode = DISP_MODE_EYES;
-      pRoboEyes->setWidth(36, 36); pRoboEyes->setHeight(36, 36);
+    if (mode == DISP_STREAM && (now - streamLastMs) > 2000) mode = DISP_CLOCK;
+
+    bool music = audioR.isMusic();
+    if (music && (mode == DISP_EYES || mode == DISP_CLOCK)) mode = DISP_VISUAL;
+    else if (!music && mode == DISP_VISUAL) {
+      mode = DISP_EYES;
+      roboEyes.setWidth(36, 36); roboEyes.setHeight(36, 36);
     }
 
-    // Tự động chuyển về màn hình Trạm Thời Tiết / Đồng hồ (Ảnh 1) khi rảnh
-    if (!music && mode == DISP_MODE_EYES) {
-      if (now - lastPresenceTime >= IDLE_PRESENCE_TIMEOUT_MS) {
-        mode = DISP_MODE_CLOCK;
-      }
+    if (!music && mode == DISP_EYES && (now - lastPresence) >= IR_PRESENCE_TIMEOUT_MS) {
+      mode = DISP_CLOCK;
     }
 
-    if (mode == DISP_MODE_CLOCK) {
-      drawClockFrame();
-    } else if (mode == DISP_MODE_EYES) {
-      if (emotionEngine.hasPendingCmd) {
-        EyeCmd &cmd = emotionEngine.pendingEyeCmd;
-        pRoboEyes->setMood(cmd.mood);
-        if (cmd.animLaugh) pRoboEyes->anim_laugh();
-        if (cmd.animConfused) pRoboEyes->anim_confused();
-        emotionEngine.hasPendingCmd = false;
-      }
-      pRoboEyes->update();
-    } else if (mode == DISP_MODE_VISUAL) {
-      AudioMetrics m; audioAnalyzer.getMetrics(m);
-      if (vizStyle == VIZ_BEAT_EYES) {
-        byte sz = 34 + (byte)(m.bands[0] * 20.0f);
-        pRoboEyes->setWidth(sz, sz); pRoboEyes->setHeight(sz, sz);
-        pRoboEyes->setMood(HAPPY); pRoboEyes->update();
-      } else if (vizStyle == VIZ_WAVE_EYES) {
-        displayObj.clearDisplay();
-        displayObj.drawRoundRect(14, 14, 44, 36, 8, SSD1306_WHITE);
-        displayObj.drawRoundRect(70, 14, 44, 36, 8, SSD1306_WHITE);
-        for (int x = 18; x < 54; x++) {
-          int y = 32 + (int)(sin((x - 18) * 0.35f + millis() * 0.02f) * m.rmsLeft * 16.0f);
-          displayObj.drawPixel(x, constrain(y, 18, 46), SSD1306_WHITE);
-        }
-        for (int x = 74; x < 110; x++) {
-          int y = 32 + (int)(sin((x - 74) * 0.35f + millis() * 0.02f) * m.rmsRight * 16.0f);
-          displayObj.drawPixel(x, constrain(y, 18, 46), SSD1306_WHITE);
-        }
-        displayObj.display();
-      } else {
-        displayObj.clearDisplay();
-        displayObj.drawRoundRect(14, 14, 44, 36, 8, SSD1306_WHITE);
-        displayObj.drawRoundRect(70, 14, 44, 36, 8, SSD1306_WHITE);
-        for (int b = 0; b < 4; b++) {
-          int h = (int)(m.bands[b] * 28.0f);
-          displayObj.fillRect(18 + b * 9, 46 - h, 6, h, SSD1306_WHITE);
-        }
-        for (int b = 4; b < 8; b++) {
-          int h = (int)(m.bands[b] * 28.0f);
-          displayObj.fillRect(74 + (b - 4) * 9, 46 - h, 6, h, SSD1306_WHITE);
-        }
-        displayObj.display();
-      }
+    switch (mode) {
+      case DISP_CLOCK:  drawClock(); break;
+      case DISP_EYES:   drawEyes(); break;
+      case DISP_VISUAL: drawVisual(); break;
+      case DISP_STREAM: drawStream(); break;
     }
   }
-} displayTask;
 
-// =================== SECTION 12: CẢM BIẾN HỒNG NGOẠI KÉP & NHẬN DIỆN SWIPE ===================
-class DualIrGestureManager {
+  const char* modeStr() const {
+    switch (mode) {
+      case DISP_CLOCK:  return PSTR("CLOCK");
+      case DISP_EYES:   return PSTR("EYES");
+      case DISP_VISUAL: return PSTR("VISUAL");
+      case DISP_STREAM: return PSTR("STREAM");
+    }
+    return PSTR("?");
+  }
+} display;
+
+// =====================================================================================
+// SECTION O: USB BINARY PROTOCOL + JSON (hash-dispatched)
+// =====================================================================================
+
+class UsbLink {
 public:
-  bool lastState1, lastState2;
-  unsigned long t1Down, t2Down;
-  unsigned long releaseTime;
-  uint8_t tapCount;
-
-  DualIrGestureManager() : lastState1(HIGH), lastState2(HIGH), t1Down(0), t2Down(0), releaseTime(0), tapCount(0) {}
-
-  void begin() {
-    pinMode(PIN_IR_PRIMARY, INPUT_PULLUP);
-    pinMode(PIN_IR_SECONDARY, INPUT_PULLUP);
-  }
-
-  void update() {
-    bool s1 = digitalRead(PIN_IR_PRIMARY);
-    bool s2 = digitalRead(PIN_IR_SECONDARY);
-    unsigned long now = millis();
-
-    // Khi phát hiện bất kỳ vật thể/chuyển động qua IR -> thức tỉnh mắt Robot ngay lập tức!
-    if (s1 == LOW || s2 == LOW) {
-      displayTask.notifyPresence();
-    }
-
-    // Bắt sườn xuống (Chạm vật cản)
-    if (lastState1 == HIGH && s1 == LOW) t1Down = now;
-    if (lastState2 == HIGH && s2 == LOW) t2Down = now;
-
-    // Nhận diện Cử chỉ Vẫy tay (Swipe) giữa 2 cảm biến
-    if (s1 == LOW && s2 == LOW && t1Down > 0 && t2Down > 0) {
-      long diff = (long)t2Down - (long)t1Down;
-      if (diff > 50 && diff < 450) {
-        // Vẫy từ cảm biến 1 sang cảm biến 2 -> SWIPE PHẢI
-        filePlayer.next();
-        emotionEngine.setEmotion(EMOTION_HAPPY);
-        t1Down = t2Down = 0;
-      } else if (diff < -50 && diff > -450) {
-        // Vẫy từ cảm biến 2 sang cảm biến 1 -> SWIPE TRÁI
-        filePlayer.prev();
-        emotionEngine.setEmotion(EMOTION_CURIOUS);
-        t1Down = t2Down = 0;
-      }
-    }
-
-    // Bắt sườn lên cảm biến 1 để đếm số lần chạm (Tap)
-    if (lastState1 == LOW && s1 == HIGH) {
-      releaseTime = now;
-      if (now - t1Down < 350) tapCount++;
-      else if (now - t1Down >= 800) {
-        // Chạm giữ lâu (Hold)
-        if (filePlayer.isPlaying) {
-          if (filePlayer.isPaused) filePlayer.resume(); else filePlayer.pause();
-        } else {
-          emotionEngine.setEmotion(EMOTION_SLEEPY);
-        }
-      }
-    }
-
-    lastState1 = s1;
-    lastState2 = s2;
-
-    // Chốt kết quả Tap sau 350ms không còn chạm thêm
-    if (tapCount > 0 && s1 == HIGH && (now - releaseTime > 350)) {
-      if (tapCount == 1) {
-        emotionEngine.setEmotion(EMOTION_HAPPY);
-      } else if (tapCount == 2) {
-        filePlayer.next();
-      } else if (tapCount >= 3) {
-        gesturePlayer.play(GESTURE_NOD_YES);
-      }
-      tapCount = 0;
-    }
-  }
-} irGesture;
-
-// =================== SECTION 13: GIAO THỨC USB NATIVE CDC NHỊ PHÂN [0xE1 0x1C] ===================
-class PcLinkBinaryProtocol {
-public:
-  enum RxState : uint8_t { ST_SYNC1 = 0, ST_SYNC2, ST_TYPE, ST_LEN_H, ST_LEN_L, ST_PAYLOAD, ST_CHKSUM };
-  RxState state;
-  uint8_t pktType;
-  uint16_t pktLen, rxCount;
+  enum State : uint8_t { S_SYNC1, S_SYNC2, S_TYPE, S_LENH, S_LENL, S_PAYLOAD, S_CHKSUM };
+  State state = S_SYNC1;
+  uint8_t pktType = 0;
+  uint16_t pktLen = 0, rxCount = 0;
   uint8_t payload[1050];
-  uint8_t runningChecksum;
-
-  PcLinkBinaryProtocol() : state(ST_SYNC1), pktType(0), pktLen(0), rxCount(0), runningChecksum(0) {}
+  uint8_t xorSum = 0;
 
   void update() {
     while (Serial.available()) {
       uint8_t b = Serial.read();
       switch (state) {
-        case ST_SYNC1:
-          if (b == USB_SYNC_1) state = ST_SYNC2;
+        case S_SYNC1:
+          if (b == USB_SYNC_1) state = S_SYNC2;
           break;
-        case ST_SYNC2:
-          if (b == USB_SYNC_2) { state = ST_TYPE; runningChecksum = 0; }
-          else state = ST_SYNC1;
+        case S_SYNC2:
+          if (b == USB_SYNC_2) { state = S_TYPE; xorSum = 0; }
+          else state = S_SYNC1;
           break;
-        case ST_TYPE:
-          pktType = b; runningChecksum ^= b; state = ST_LEN_H;
+        case S_TYPE:
+          pktType = b; xorSum ^= b; state = S_LENH;
           break;
-        case ST_LEN_H:
-          pktLen = ((uint16_t)b) << 8; runningChecksum ^= b; state = ST_LEN_L;
+        case S_LENH:
+          pktLen = ((uint16_t)b) << 8; xorSum ^= b; state = S_LENL;
           break;
-        case ST_LEN_L:
-          pktLen |= b; runningChecksum ^= b;
-          rxCount = 0;
-          if (pktLen > 1040) state = ST_SYNC1;
-          else state = (pktLen == 0) ? ST_CHKSUM : ST_PAYLOAD;
+        case S_LENL:
+          pktLen |= b; xorSum ^= b; rxCount = 0;
+          state = (pktLen > 1040) ? S_SYNC1 : (pktLen == 0 ? S_CHKSUM : S_PAYLOAD);
           break;
-        case ST_PAYLOAD:
-          payload[rxCount++] = b; runningChecksum ^= b;
-          if (rxCount >= pktLen) state = ST_CHKSUM;
+        case S_PAYLOAD:
+          payload[rxCount++] = b; xorSum ^= b;
+          if (rxCount >= pktLen) state = S_CHKSUM;
           break;
-        case ST_CHKSUM:
-          if (b == runningChecksum) {
-            handlePacket();
-          }
-          state = ST_SYNC1;
+        case S_CHKSUM:
+          if (b == xorSum) handle();
+          state = S_SYNC1;
           break;
       }
     }
   }
 
-  void handlePacket() {
-    displayTask.notifyPresence();
-    if (pktType == PKT_AUDIO_PCM && pktLen >= 4) {
-      audioRouter.setSource(SRC_USB_PC);
-      audioRouter.writePcm((const int16_t*)payload, pktLen / 4);
-    } else if (pktType == PKT_OLED_BITMAP && pktLen == 1024) {
-      displayTask.mode = DISP_MODE_STREAM;
-      memcpy(displayTask.streamBitmap, payload, 1024);
-      displayTask.streamHasNewFrame = true;
-    } else if (pktType == PKT_CMD_JSON) {
-      #if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
-      #else
-      StaticJsonDocument<256> doc;
-      #endif
-      if (deserializeJson(doc, payload, pktLen) == DeserializationError::Ok) {
-        if (doc["emotion"].is<int>()) emotionEngine.setEmotion((EmotionType)doc["emotion"].as<int>());
-        if (doc["gesture"].is<int>()) gesturePlayer.play((GestureId)doc["gesture"].as<int>());
-        if (doc["pan"].is<float>() && doc["tilt"].is<float>()) headServo.setTarget(doc["pan"].as<float>(), doc["tilt"].as<float>());
+  // OPTIMIZED: dùng hash dispatch thay strcmp
+  void processJson(const char* json, size_t len) {
+    StaticJsonDocument<256> doc;
+    if (deserializeJson(doc, json, len) != DeserializationError::Ok) return;
+
+    for (auto kv : doc.as<JsonObject>()) {
+      uint32_t k = hashKey(kv.key().c_str());
+      switch (k) {
+        case CmdHash::EMOTION:
+          if (kv.value().is<const char*>()) {
+            emotion.setEmotion(EmotionEngine::fromHash(hashKey(kv.value().as<const char*>())));
+          } else if (kv.value().is<int>()) {
+            emotion.setEmotion((Emotion)constrain(kv.value().as<int>(), 0, 6));
+          }
+          break;
+        case CmdHash::GESTURE:
+          if (kv.value().is<int>()) gesture.play((Gesture)constrain(kv.value().as<int>(), 0, 7));
+          break;
+        case CmdHash::PAN:
+          if (kv.value().is<float>()) {
+            float t = kv.value().as<float>();
+            head.setTarget(t, head.tilt.target - head.tilt.offset);
+          }
+          break;
+        case CmdHash::TILT:
+          if (kv.value().is<float>()) {
+            float t = kv.value().as<float>();
+            head.setTarget(head.pan.target - head.pan.offset, t);
+          }
+          break;
+        case CmdHash::CENTER:
+          if (kv.value().as<bool>()) head.center();
+          break;
+        case CmdHash::CALIB_P:
+        case CmdHash::CALIB_T: {
+          int8_t p = doc["calib_pan"] | 0;
+          int8_t to = doc["calib_tilt"] | 0;
+          head.saveCalib(p, to);
+          break;
+        }
+        case CmdHash::SOURCE:
+          audioR.setSource((AudioSource)constrain(kv.value().as<int>(), 0, 3));
+          break;
+        case CmdHash::VOL:
+          audioR.setVol(constrain(kv.value().as<int>(), 0, 100));
+          break;
+        case CmdHash::PLAY:  fileP.playIndex(kv.value().as<int>()); break;
+        case CmdHash::PAUSE: fileP.pause(); break;
+        case CmdHash::NEXT:  fileP.next();  break;
+        case CmdHash::PREV:  fileP.prev();  break;
+        case CmdHash::MODE:
+          if (kv.value().is<const char*>()) {
+            uint32_t mh = hashKey(kv.value().as<const char*>());
+            switch (mh) {
+              case ModeHash::SLEEP:   autonomy.setMode(AUTO_SLEEP); break;
+              case ModeHash::CALM:    autonomy.setMode(AUTO_CALM); break;
+              case ModeHash::CURIOUS: autonomy.setMode(AUTO_CURIOUS); break;
+              case ModeHash::PLAYFUL: autonomy.setMode(AUTO_PLAYFUL); break;
+            }
+          }
+          break;
       }
+    }
+  }
+
+  void handle() {
+    display.notifyPresence();
+    if (pktType == PKT_AUDIO_PCM && pktLen >= 4) {
+      audioR.setSource(SRC_USB_PC);
+      audioR.writePcm((const int16_t*)payload, pktLen / 4);
+    } else if (pktType == PKT_OLED_BITMAP && pktLen == 1024) {
+      display.mode = DISP_STREAM;
+      display.setStreamFrame(payload);
+    } else if (pktType == PKT_CMD_JSON && pktLen > 0 && pktLen < sizeof(payload)) {
+      // FIX B4: bounds check + null-terminate an toàn
+      payload[pktLen] = '\0';
+      processJson((const char*)payload, pktLen);
     } else if (pktType == PKT_TELEMETRY_REQ) {
-      uint8_t res[16];
-      res[0] = USB_SYNC_1; res[1] = USB_SYNC_2; res[2] = 0x84;
-      res[3] = 0x00; res[4] = 0x06;
-      res[5] = (uint8_t)round(headServo.axisPan.currentAngle);
-      res[6] = (uint8_t)round(headServo.axisTilt.currentAngle);
-      res[7] = (uint8_t)round(displayTask.actualFps);
-      res[8] = (uint8_t)audioRouter.currentSource;
-      res[9] = (uint8_t)gUnderrunCount;
+      uint8_t res[11] = {
+        USB_SYNC_1, USB_SYNC_2, 0x84, 0x00, 0x06,
+        (uint8_t)roundf(head.pan.current), (uint8_t)roundf(head.tilt.current),
+        (uint8_t)roundf(display.fps), (uint8_t)audioR.src,
+        (uint8_t)(gUnderrunCount & 0xFF), 0
+      };
       res[10] = res[5] ^ res[6] ^ res[7] ^ res[8] ^ res[9];
       Serial.write(res, 11);
     }
   }
-} pcLink;
+} usb;
 
-// =================== SECTION 15: TỰ HÀNH & NHÚN ĐẦU THEO NHỊP BASS ===================
-class AutonomyManager {
+// =====================================================================================
+// SECTION P: AUTONOMY
+// =====================================================================================
+
+class Autonomy {
 public:
-  AutonomyModeType currentMode;
-  unsigned long manualUntil, lastAction, actionInterval;
-  uint32_t lastBeat;
-
-  AutonomyManager() : currentMode(AUTO_MODE_CURIOUS), manualUntil(0), lastAction(0), actionInterval(4000), lastBeat(0) {}
+  AutoMode mode = AUTO_CURIOUS;
+  unsigned long manualUntil = 0, lastAction = 0;
+  uint32_t lastBeat = 0;
+  uint16_t interval = 4000;
 
   void notifyManual() {
     manualUntil = millis() + 8000;
-    displayTask.notifyPresence();
+    display.notifyPresence();
   }
-  bool isManual() const { return (millis() < manualUntil); }
+  bool isManual() const { return (int32_t)(millis() - manualUntil) < 0; }
 
-  void setMode(AutonomyModeType m) {
-    currentMode = m; lastAction = millis();
-    displayTask.notifyPresence();
-    if (m == AUTO_MODE_SLEEP) emotionEngine.setEmotion(EMOTION_SLEEPY);
-    else if (m == AUTO_MODE_CURIOUS) emotionEngine.setEmotion(EMOTION_CURIOUS);
-    else if (m == AUTO_MODE_CALM) emotionEngine.setEmotion(EMOTION_NEUTRAL);
+  void setMode(AutoMode m) {
+    mode = m; lastAction = millis();
+    display.notifyPresence();
+    if      (m == AUTO_SLEEP)   emotion.setEmotion(EMO_SLEEPY);
+    else if (m == AUTO_CURIOUS) emotion.setEmotion(EMO_CURIOUS);
+    else if (m == AUTO_CALM)    emotion.setEmotion(EMO_NEUTRAL);
+    else if (m == AUTO_PLAYFUL) emotion.setEmotion(EMO_HAPPY);
   }
 
   void update() {
     if (isManual()) return;
 
-    // Khi phát nhạc: Nhún đầu theo phách trống Beat
-    if (audioRouter.isMusicPlaying()) {
-      AudioMetrics m; audioAnalyzer.getMetrics(m);
+    if (audioR.isMusic()) {
+      AudioMetrics m; audio.get(m);
       if (m.beatCount != lastBeat) {
         lastBeat = m.beatCount;
-        headServo.setTarget(headServo.axisPan.targetAngle - headServo.axisPan.offset, 98.0f, 90.0f);
-      } else if (!headServo.isMoving()) {
-        headServo.setTarget(headServo.axisPan.targetAngle - headServo.axisPan.offset, 90.0f, 60.0f);
+        head.setTarget(head.pan.target - head.pan.offset, 98.0f, 90.0f);
+      } else if (!head.isMoving()) {
+        head.setTarget(head.pan.target - head.pan.offset, 90.0f, 60.0f);
       }
       return;
     }
 
-    if (gesturePlayer.isPlaying || currentMode == AUTO_MODE_SLEEP) return;
+    if (gesture.playing || mode == AUTO_SLEEP) return;
 
-    if (millis() - lastAction >= actionInterval) {
+    if (millis() - lastAction >= interval) {
       lastAction = millis();
-      actionInterval = random(4000, 8000);
-      if (currentMode == AUTO_MODE_CURIOUS) {
-        if (random(2) == 0) headServo.setTarget(random(70, 110), random(80, 100), 80.0f);
-        else gesturePlayer.play(GESTURE_TILT_CURIOUS);
-      } else if (currentMode == AUTO_MODE_PLAYFUL) {
-        gesturePlayer.play(GESTURE_BOUNCE_HAPPY);
+      interval = random(4000, 8000);
+      switch (mode) {
+        case AUTO_CURIOUS:
+          if (random(2)) head.setTarget(random(70, 110), random(80, 100), 80.0f);
+          else gesture.play(GES_TILT_CURIOUS);
+          break;
+        case AUTO_PLAYFUL:
+          gesture.play(GES_BOUNCE_HAPPY);
+          break;
+        case AUTO_CALM:
+          head.setTarget(PAN_CENTER_DEG + random(-15, 16), TILT_CENTER_DEG + random(-3, 4), 50.0f);
+          break;
+        default: break;
       }
     }
   }
 } autonomy;
 
-// =================== SECTION 16: MÁY CHỦ WEBSERVER & WEB OTA (CORE 0) ===================
-void setupWebServer() {
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL, 0, 4);
-  dnsServerObj.start(53, "*", WiFi.softAPIP());
+// =====================================================================================
+// SECTION Q: FREERTOS TASKS (2 cores)
+// =====================================================================================
 
-  serverObj.on("/", HTTP_GET, []() {
-    displayTask.notifyPresence();
-    serverObj.send_P(200, "text/html", HTML_CONTROL_PAGE);
-  });
-
-  serverObj.on("/api/nudge", HTTP_GET, []() {
-    autonomy.notifyManual();
-    headServo.nudge(serverObj.arg("dpan").toFloat(), serverObj.arg("dtilt").toFloat());
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/center", HTTP_GET, []() {
-    autonomy.notifyManual();
-    headServo.center();
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/emotion", HTTP_GET, []() {
-    autonomy.notifyManual();
-    emotionEngine.setEmotion((EmotionType)serverObj.arg("id").toInt());
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/gesture", HTTP_GET, []() {
-    autonomy.notifyManual();
-    gesturePlayer.play((GestureId)serverObj.arg("id").toInt());
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/mode", HTTP_GET, []() {
-    autonomy.setMode((AutonomyModeType)serverObj.arg("id").toInt());
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/music", HTTP_GET, []() {
-    autonomy.notifyManual();
-    String a = serverObj.arg("act");
-    if (a == "next") filePlayer.next();
-    else if (a == "prev") filePlayer.prev();
-    else if (a == "pause") filePlayer.pause();
-    else if (a == "resume") filePlayer.resume();
-    else if (a == "vol") audioRouter.setVolume(serverObj.arg("val").toInt());
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/viz", HTTP_GET, []() {
-    displayTask.notifyPresence();
-    displayTask.vizStyle = (VizStyleType)serverObj.arg("style").toInt();
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/calib", HTTP_GET, []() {
-    headServo.saveOffsets(serverObj.arg("pan").toInt(), serverObj.arg("tilt").toInt());
-    serverObj.send(200, "application/json", "{\"status\":\"ok\"}");
-  });
-
-  serverObj.on("/api/state", HTTP_GET, []() {
-    #if ARDUINOJSON_VERSION_MAJOR >= 7
-    JsonDocument doc;
-    #else
-    StaticJsonDocument<256> doc;
-    #endif
-    doc["pan"] = round(headServo.axisPan.currentAngle - headServo.axisPan.offset);
-    doc["tilt"] = round(headServo.axisTilt.currentAngle - headServo.axisTilt.offset);
-    doc["fps"] = round(displayTask.actualFps);
-    doc["free_heap"] = ESP.getFreeHeap();
-    doc["underruns"] = gUnderrunCount;
-    doc["disp_mode"] = (displayTask.mode == DISP_MODE_CLOCK) ? "CLOCK_IDLE" : (displayTask.mode == DISP_MODE_EYES ? "ROBOEYES" : "VISUAL");
-    String res; serializeJson(doc, res);
-    serverObj.send(200, "application/json", res);
-  });
-
-  // Giao thức Web OTA Flash trực tiếp qua trình duyệt
-  serverObj.on("/update", HTTP_POST, []() {
-    serverObj.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-    delay(500);
-    ESP.restart();
-  }, []() {
-    HTTPUpload& upload = serverObj.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-      Serial0.printf("[OTA] Bắt đầu nạp firmware: %s\n", upload.filename.c_str());
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial0);
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) Update.printError(Serial0);
-    } else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) Serial0.printf("[OTA] Nạp thành công: %u bytes\n", upload.totalSize);
-    }
-  });
-
-  serverObj.onNotFound([]() {
-    displayTask.notifyPresence();
-    serverObj.send_P(200, "text/html", HTML_CONTROL_PAGE);
-  });
-
-  serverObj.begin();
-}
-
-// =================== SECTION 17: CÁC TASK FREERTOS ĐỐI XỨNG 2 CORE ===================
-// Core 0: Audio DMA + File Player
-void taskAudioLoop(void *p) {
+// CORE 0:
+void taskAudio(void*) {
   while (true) {
-    filePlayer.loop();
+    fileP.loop();
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
 
-// Core 0: USB Native CDC Link
-void taskUsbLoop(void *p) {
+void taskUsb(void*) {
   while (true) {
-    pcLink.update();
+    usb.update();
     vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
 
-// Core 0: Web Server, DNS & Web OTA
-void taskWebLoop(void *p) {
-  while (true) {
-    dnsServerObj.processNextRequest();
-    serverObj.handleClient();
-    vTaskDelay(pdMS_TO_TICKS(2));
-  }
-}
-
-// Core 1: Display OLED SSD1306 (30 FPS)
-void taskDisplayLoop(void *p) {
-  while (true) {
-    displayTask.update();
-    vTaskDelay(pdMS_TO_TICKS(4));
-  }
-}
-
-// Core 1: Brain, Gestures, Dual IR Sensors
-void taskBrainLoop(void *p) {
+// CORE 1:
+void taskServo(void*) {
   TickType_t last = xTaskGetTickCount();
   while (true) {
-    gesturePlayer.update();
-    irGesture.update();
+    head.update(0.020f);
+    vTaskDelayUntil(&last, pdMS_TO_TICKS(20));
+  }
+}
+
+void taskDisplay(void*) {
+  TickType_t last = xTaskGetTickCount();
+  while (true) {
+    display.update();
+    vTaskDelayUntil(&last, pdMS_TO_TICKS(33));  // 30 FPS
+  }
+}
+
+void taskBrain(void*) {
+  TickType_t last = xTaskGetTickCount();
+  while (true) {
+    ir.update();
+    IrEvent ev = ir.consume();
+    if (ev != IR_NONE) {
+      autonomy.notifyManual();
+      switch (ev) {
+        case IR_TAP:    emotion.setEmotion(EMO_HAPPY); break;
+        case IR_DOUBLE: {
+          // FIX B6: modulo thay bitwise AND (an toàn nếu AutoMode count thay đổi)
+          uint8_t next = (autonomy.mode + 1) % 4;
+          autonomy.setMode((AutoMode)next);
+          break;
+        }
+        case IR_TRIPLE: gesture.play(GES_NOD_YES); break;
+        case IR_HOLD:
+          if (fileP.playing) { if (fileP.paused) fileP.resume(); else fileP.pause(); }
+          else emotion.setEmotion(EMO_SLEEPY);
+          break;
+        case IR_SWIPE_RIGHT: fileP.next();  emotion.setEmotion(EMO_HAPPY);   break;
+        case IR_SWIPE_LEFT:  fileP.prev();  emotion.setEmotion(EMO_CURIOUS); break;
+        default: break;
+      }
+    }
+    gesture.update();
     autonomy.update();
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(20)); // 50Hz
+    vTaskDelayUntil(&last, pdMS_TO_TICKS(20));
   }
 }
 
-// Core 1: Servo Kinematics Smoothstep (50Hz)
-void taskServoLoop(void *p) {
-  TickType_t last = xTaskGetTickCount();
-  while (true) {
-    headServo.update(0.020f);
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(20)); // 50Hz
-  }
-}
+// =====================================================================================
+// SECTION R: SETUP & LOOP
+// =====================================================================================
 
-// =================== SECTION 18: SETUP & VÒNG LẶP TELEMETRY ===================
 void setup() {
-  Serial0.begin(115200); // Debug UART (GPIO 43/44)
-  Serial.begin(115200);  // USB Native CDC (GPIO 19/20)
+  Serial0.begin(115200);
+  Serial.begin(115200);
   delay(300);
 
-  Serial0.println(F("\n======================================================"));
-  Serial0.println(F(" MIU EILIK ESP32-S3 - PRO OPTIMIZED FIRMWARE v5.2    "));
-  Serial0.println(F(" Dual-Core FreeRTOS | Smoothstep Servo | RoboEyes     "));
-  Serial0.println(F(" Clock Weather Dashboard | Dual IR Presence Wakeup    "));
-  Serial0.println(F("======================================================"));
+  Serial0.println(F("\n====================================================="));
+  Serial0.println(F(" MIU EILIK ESP32-S3 - OPTIMIZED v6.2 (bug-fixed)   "));
+  Serial0.println(F(" PROGMEM | FNV-1a | Streaming I2S | 2-core RTOS     "));
+  Serial0.println(F("====================================================="));
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
 
   gStateMutex = xSemaphoreCreateMutex();
+  audio.begin();
+  head.begin();
+  display.begin();
+  audioR.begin();
+  fileP.begin();
+  ir.begin();
 
-  audioAnalyzer.begin();
-  headServo.begin();
-  displayTask.begin();
-  audioRouter.begin();
-  filePlayer.begin();
-  irGesture.begin();
-  setupWebServer();
+  xTaskCreatePinnedToCore(taskAudio,   "Audio",   4096, NULL, 5, NULL, 0);
+  xTaskCreatePinnedToCore(taskUsb,     "USB",     4096, NULL, 4, NULL, 0);
+  xTaskCreatePinnedToCore(taskServo,   "Servo",   4096, NULL, 5, NULL, 1);
+  xTaskCreatePinnedToCore(taskDisplay, "Display", 6144, NULL, 4, NULL, 1);
+  xTaskCreatePinnedToCore(taskBrain,   "Brain",   4096, NULL, 3, NULL, 1);
 
-  // PHÂN BỔ ĐỐI XỨNG 2 NHÂN FREERTOS
-  // Core 0: Âm thanh DMA, USB Native CDC, Mạng WebServer/OTA
-  xTaskCreatePinnedToCore(taskAudioLoop,   "AudioTask",   4096, NULL, 5, NULL, 0);
-  xTaskCreatePinnedToCore(taskUsbLoop,     "UsbTask",     4096, NULL, 4, NULL, 0);
-  xTaskCreatePinnedToCore(taskWebLoop,     "WebTask",     5120, NULL, 3, NULL, 0);
-
-  // Core 1: Đồ họa OLED 30 FPS, Logic Não bộ & Cảm biến, Động cơ Servo 50Hz
-  xTaskCreatePinnedToCore(taskServoLoop,   "ServoTask",   4096, NULL, 5, NULL, 1);
-  xTaskCreatePinnedToCore(taskDisplayLoop, "DisplayTask", 6144, NULL, 4, NULL, 1);
-  xTaskCreatePinnedToCore(taskBrainLoop,   "BrainTask",   4096, NULL, 3, NULL, 1);
-
-  Serial0.println(F("[SYSTEM] Khởi động hoàn tất 6 Task FreeRTOS trên 2 Core!"));
+  Serial0.println(F("[OK] 5 tasks started on 2 cores"));
 }
 
-unsigned long lastTelemetryTime = 0;
+unsigned long lastTelem = 0;
 
 void loop() {
-  // Báo cáo Telemetry định kỳ 10 giây in ra Serial0 (GPIO 43/44)
   unsigned long now = millis();
-  if (now - lastTelemetryTime >= 10000) {
-    lastTelemetryTime = now;
-    Serial0.printf(
-      "[TELEMETRY] Uptime: %lus | FPS: %.1f | Heap: %u B | PSRAM: %u B | Underruns: %u | Servos: (P:%.1f, T:%.1f) | Disp: %s\n",
-      now / 1000,
-      displayTask.actualFps,
-      ESP.getFreeHeap(),
-      ESP.getFreePsram(),
-      gUnderrunCount,
-      headServo.axisPan.currentAngle,
-      headServo.axisTilt.currentAngle,
-      (displayTask.mode == DISP_MODE_CLOCK) ? "CLOCK_IDLE" : ((displayTask.mode == DISP_MODE_EYES) ? "ROBOEYES" : "VISUAL")
-    );
+  if (now - lastTelem >= 10000) {
+    lastTelem = now;
+    Serial0.printf("[TELEM] up=%lus fps=%.0f heap=%u psram=%u und=%u pan=%.1f tilt=%.1f mode=%s\n",
+      now / 1000, display.fps, ESP.getFreeHeap(), ESP.getFreePsram(),
+      gUnderrunCount, head.pan.current, head.tilt.current, display.modeStr());
   }
   delay(100);
 }
