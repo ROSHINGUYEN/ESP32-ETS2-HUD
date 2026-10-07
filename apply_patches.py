@@ -37,16 +37,22 @@ def apply_patch(src_path, patch_path):
         return False
 
     # Try the `patch` CLI first (Git for Windows ships one)
+    # On Windows without `patch` in PATH, `os.system` prints a noisy error
+    # that confuses some IDEs. Redirect stderr to NUL and check rc.
     patch_bin = os.environ.get("PATCH_BIN", "patch")
-    cmd = '%s --quiet --forward -p1 -d "%s" -i "%s"' % (
-        patch_bin, dirname(src_path), patch_path,
-    )
+    if os.name == "nt":
+        cmd = '%s --quiet --forward -p1 -d "%s" -i "%s" 2>nul' % (
+            patch_bin, dirname(src_path), patch_path,
+        )
+    else:
+        cmd = '%s --quiet --forward -p1 -d "%s" -i "%s"' % (
+            patch_bin, dirname(src_path), patch_path,
+        )
     rc = os.system(cmd)
     if rc == 0:
         print("[apply_patches] OK (patch CLI): %s" % src_path)
         return True
-    print("[apply_patches] patch CLI failed (rc=%d), using manual replace" % rc)
-    # Manual fallback: read patch, find `-` lines, replace with `+` lines
+    # patch CLI not available or returned non-zero -> manual fallback
     return _manual_apply(src_path, patch_path)
 
 
