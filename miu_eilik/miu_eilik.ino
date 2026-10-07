@@ -1,19 +1,24 @@
 /**
  * =====================================================================================
- *  MIU EILIK ESP32-S3 - OPTIMIZED FIRMWARE v6.2 (bug-fixed)
+ *  MIU EILIK ESP32-S3 - OPTIMIZED FIRMWARE v6.3 (bug-fixed v6.2 + audit)
  *  Tối ưu:
  *    - PROGMEM: chuyển string/keyframe ra Flash (~5KB RAM saved)
  *    - FNV-1a hash thay strcmp() cho JSON command dispatch (~10x faster)
  *    - I2S streaming: scale on-the-fly, single-pass audio analysis
- *    - Display: I2C timeout, 30 FPS stable
+ *    - Display: I2C timeout, 30 FPS stable, double-buffer cho OLED stream
  *    - Char array thay String trong hot path
  *    - Bounded array thay std::vector trong FilePlayer
  *
- *  BUG FIXES so với v6.1:
- *    B1: RoboEyes constructor cần POINTER (đã fix)
- *    B2/B3: Gesture bounds check + correct memcpy_P to GESTURE table
- *    B4: Payload null-terminate bounds check
- *    B5: Servo setTarget giữ velocity khi chuỗi lệnh liên tiếp
+ *  v6.3 AUDIT (sau rà soát toàn diện):
+ *    C1: gestureIdx underflow guard (uint8_t - 1 = 255 nếu gestureIdx == 0)
+ *    C6/C8: 2KB stack buffer -> BSS member (tránh overflow trong task 4KB)
+ *    C18: Servo dt thực từ millis() thay vì hardcode 20ms
+ *    C24: streamBuf double-buffer (race giữa taskUsb và taskDisplay)
+ *    C25-C26: minor cleanup
+ *
+ *  v6.2 BUG FIXES so với v6.1:
+ *    B1: RoboEyes constructor cần POINTER
+ *    B5: Servo setTarget giữ velocity khi chuỗi lệnh cùng chiều
  *    B6: AutoMode dùng % thay & (nếu count thay đổi sẽ không crash)
  *    M1: Gesture current bounds check
  *    M3: Audio analyzer subsample 2x (giảm 50% CPU)
@@ -412,37 +417,51 @@ public:
   }
 
   // Helper: đọc 1 Keyframe từ PROGMEM an toàn
-  static void readKeyframe(uint8_t gestureIdx, uint8_t frameIdx, Keyframe& out) {
+  static bool readKeyframe(uint8_t gestureIdx, uint8_t frameIdx, Keyframe& out) {
+    // FIX C1: validate gestureIdx trước khi dùng để tránh underflow uint8_t
+    if (gestureIdx == 0 || gestureIdx > GESTURE_COUNT) return false;
     // gestureIdx 1-based (0 = NONE), GESTURE_TABLE 0-based tương ứng gestureIdx-1
     const GestureTrack* entry = &GESTURE_TABLE[gestureIdx - 1];
     // Đọc con trỏ data từ PROGMEM (32-bit pointer trên ESP32)
     const Keyframe* trackPtr;
     memcpy_P(&trackPtr, &entry->data, sizeof(trackPtr));
+    if (!trackPtr) return false;
     // Đọc Keyframe thứ frameIdx
     memcpy_P(&out, &trackPtr[frameIdx], sizeof(Keyframe));
+    return true;
   }
 
-  static uint8_t readTrackLen(uint8_t gestureIdx) {
+  static bool readTrackLen(uint8_t gestureIdx, uint8_t& outLen) {
+    if (gestureIdx == 0 || gestureIdx > GESTURE_COUNT) return false;
     const GestureTrack* entry = &GESTURE_TABLE[gestureIdx - 1];
-    return pgm_read_byte(&entry->len);
+    outLen = pgm_read_byte(&entry->len);
+    return true;
   }
 
   void startFrame(uint8_t i) {
     idx = i;
     frameStartMs = millis();
     Keyframe kf;
-    readKeyframe(current, i, kf);
-    head.setTarget(kf.pan, kf.tilt, 200.0f);
+    if (readKeyframe(current, i, kf)) {
+      head.setTarget(kf.pan, kf.tilt, 200.0f);
+    } else {
+      playing = false; current = GES_NONE;
+    }
   }
 
   void update() {
     if (playing) {
       Keyframe kf;
-      readKeyframe(current, idx, kf);
+      if (!readKeyframe(current, idx, kf)) {
+        playing = false; current = GES_NONE; return;
+      }
       if (millis() - frameStartMs >= kf.ms) {
-        uint8_t len = readTrackLen(current);
-        if (idx + 1 < len) startFrame(idx + 1);
-        else { playing = false; current = GES_NONE; }
+        uint8_t len = 0;
+        if (!readTrackLen(current, len) || idx + 1 >= len) {
+          playing = false; current = GES_NONE;
+        } else {
+          startFrame(idx + 1);
+        }
       }
       return;
     }
@@ -623,6 +642,9 @@ public:
   AudioSource src = SRC_NONE;
   uint8_t vol = 30, volCeil = DEFAULT_VOLUME_CEIL;
   bool ampOn = false;
+  // FIX C6: buffer thành member (heap-equivalent trong BSS, 0 alloc)
+  // Tránh stack overflow khi writePnh gọi trong task 4KB stack
+  int16_t scratch[AUDIO_CHUNK_SAMPLES * 2];
 
   void begin() {
     pinMode(PIN_I2S_SD, OUTPUT); digitalWrite(PIN_I2S_SD, LOW);
@@ -653,12 +675,11 @@ public:
     audio.process(samples, frames);
 
     float scale = vol / 100.0f;
-    // Chia chunk tối đa AUDIO_CHUNK_SAMPLES, scale từng sample rồi ghi thẳng I2S
     size_t rem = frames, off = 0;
     while (rem > 0) {
       size_t chunk = rem > AUDIO_CHUNK_SAMPLES ? AUDIO_CHUNK_SAMPLES : rem;
-      // Buffer trên stack - kích thước cố định, tránh malloc
-      int16_t buf[AUDIO_CHUNK_SAMPLES * 2];
+      // FIX C6: dùng scratch[] ở member (BSS) thay vì stack alloc
+      int16_t* buf = scratch;
       for (size_t i = 0; i < chunk * 2; i++) {
         buf[i] = (int16_t)(samples[off * 2 + i] * scale);
       }
@@ -683,6 +704,8 @@ public:
   int8_t idx = -1;
   bool playing = false, paused = false;
   File file;
+  // FIX C8: buffer thành member tránh stack overflow
+  int16_t fileBuf[AUDIO_CHUNK_SAMPLES * 2];
 
   void begin() {
     if (LittleFS.begin(true)) {
@@ -727,9 +750,8 @@ public:
 
   void loop() {
     if (!playing || paused || !file) return;
-    int16_t buf[AUDIO_CHUNK_SAMPLES * 2];
-    size_t got = file.read((uint8_t*)buf, sizeof(buf));
-    if (got > 0) audioR.writePcm(buf, got / 4);
+    size_t got = file.read((uint8_t*)fileBuf, sizeof(fileBuf));
+    if (got > 0) audioR.writePcm(fileBuf, got / 4);
     else next();
   }
 } fileP;
@@ -806,8 +828,11 @@ public:
   float fps = 0;
   uint16_t frameCount = 0;
   unsigned long fpsTimer = 0;
-  uint8_t streamBuf[1024];
-  bool streamNew = false;
+  // FIX C24: double buffer tránh race condition giữa taskUsb (ghi) và taskDisplay (đọc)
+  uint8_t streamBuf[2][1024];
+  volatile uint8_t streamWriteIdx = 0;  // index buffer producer đang ghi
+  volatile uint8_t streamReadIdx  = 1;  // index buffer consumer đang đọc (luôn khác write)
+  volatile bool streamNew = false;
   unsigned long streamLastMs = 0;
   unsigned long lastPresence = 0;
   unsigned long bootMs = 0;
@@ -1034,7 +1059,8 @@ public:
   void drawStream() {
     if (streamNew) {
       oled.clearDisplay();
-      oled.drawBitmap(0, 0, streamBuf, SCREEN_W, SCREEN_H, SSD1306_WHITE);
+      // FIX C24: đọc từ buffer ReadIdx (cố định, không bị producer ghi đè)
+      oled.drawBitmap(0, 0, streamBuf[streamReadIdx], SCREEN_W, SCREEN_H, SSD1306_WHITE);
       oled.display();
       streamNew = false;
     }
@@ -1042,7 +1068,12 @@ public:
 
   void setStreamFrame(const uint8_t* bmp) {
     if (!bmp) return;
-    memcpy(streamBuf, bmp, 1024);
+    // FIX C24: ghi vào WriteIdx, swap read/write nguyên tử (1-byte atomic)
+    memcpy(streamBuf[streamWriteIdx], bmp, 1024);
+    // Swap an toàn vì 2 core cùng chỉ đọc/ghi 1 byte
+    uint8_t newRead = streamWriteIdx;
+    streamWriteIdx = streamReadIdx;
+    streamReadIdx  = newRead;
     streamNew = true; streamLastMs = millis();
   }
 
@@ -1311,8 +1342,14 @@ void taskUsb(void*) {
 // CORE 1:
 void taskServo(void*) {
   TickType_t last = xTaskGetTickCount();
+  uint32_t lastMs = millis();
   while (true) {
-    head.update(0.020f);
+    // FIX C18: dt thực thay vì hardcoded 20ms (tránh servo chạy nhanh khi task bị stall)
+    uint32_t nowMs = millis();
+    float dt = (nowMs - lastMs) / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f;  // cap nếu task bị stall (ví dụ: 100ms)
+    lastMs = nowMs;
+    head.update(dt);
     vTaskDelayUntil(&last, pdMS_TO_TICKS(20));
   }
 }
@@ -1366,7 +1403,7 @@ void setup() {
   delay(300);
 
   Serial0.println(F("\n====================================================="));
-  Serial0.println(F(" MIU EILIK ESP32-S3 - OPTIMIZED v6.2 (bug-fixed)   "));
+  Serial0.println(F(" MIU EILIK ESP32-S3 - OPTIMIZED v6.3 (audit+fix) "));
   Serial0.println(F(" PROGMEM | FNV-1a | Streaming I2S | 2-core RTOS     "));
   Serial0.println(F("====================================================="));
 

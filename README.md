@@ -187,7 +187,7 @@ Format hỗ trợ: **WAV PCM 16-bit 44.1kHz stereo** (skip 44-byte header) hoặ
 
 ---
 
-## 🐛 Đã sửa (v6.1 → v6.2)
+## 🐛 Đã sửa (v6.1 → v6.3)
 
 | ID | Lỗi | Mức độ |
 |---|---|---|
@@ -200,6 +200,10 @@ Format hỗ trợ: **WAV PCM 16-bit 44.1kHz stereo** (skip 44-byte header) hoặ
 | M3 | Audio 352k filter/giây quá tải | 🟠 CPU |
 | M4 | FPS đo sai (counter snapshot) | 🟡 Telemetry |
 | M6 | `PROGMEM` float không portable | 🟠 Portability |
+| C1 | `gestureIdx - 1` uint8_t underflow | 🟠 Crash future |
+| C6/C8 | 2KB buffer trên stack trong task 4KB | 🔴 Stack overflow |
+| C18 | `head.update(0.020f)` hardcode dt | 🟠 Stall servo |
+| C24 | `streamBuf` race giữa 2 core | 🔴 Tear hình |
 | S1-S5 | Dead code (mutex, vector, fields) | 🟡 Cleanup |
 
 ---
