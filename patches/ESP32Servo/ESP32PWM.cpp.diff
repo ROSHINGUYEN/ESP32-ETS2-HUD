@@ -6,12 +6,10 @@
  	}
 -	ESP_LOGE(TAG, "ERROR All PWM timers allocated! Can't accomodate %.3f Hz\r\nHalting...", freq);
 -	while (1);
-+	// Patched by MIU EILIK v6.4: replaced infinite loop with safe return.
-+	// The original `while(1)` would freeze the CPU 100% on a resource
-+	// exhaustion error. The MIU EILIK project only attaches 2 servos
-+	// (2 LEDC channels) so this code path is unreachable, but we patch
-+	// it anyway as defense in depth + to satisfy the static rule checker
-+	// OCR-LOGIC-EMPTY-INFINITE-LOOP.
++	// Patched by MIU EILIK v6.6: hang loop removed, replaced with safe error-return.
++	// The original library freezes the CPU on PWM resource exhaustion. MIU project
++	// uses only 2 LEDC channels (well below the limit), but we patch as defense
++	// in depth and to satisfy static rule checker OCR-LOGIC-EMPTY-INFINITE-LOOP.
 +	ESP_LOGE(TAG, "ERROR All PWM timers allocated! Can't accomodate %.3f Hz", freq);
 +	return -1;
  }
