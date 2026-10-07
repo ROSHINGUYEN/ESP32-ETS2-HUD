@@ -145,21 +145,23 @@ namespace CmdHash {
 }
 
 // Hash cho emotion string values
+// Fix macro clash: HAPPY/ANGRY are defined by FluxGarage_RoboEyes.h as #define HAPPY 3
+// We use distinct names (EMO_*) to avoid preprocessor expansion issues
 namespace EmoHash {
-  constexpr uint32_t NEUTRAL  = fnv1a("NEUTRAL");
-  constexpr uint32_t HAPPY    = fnv1a("HAPPY");
-  constexpr uint32_t ANGRY    = fnv1a("ANGRY");
-  constexpr uint32_t SLEEPY   = fnv1a("SLEEPY");
-  constexpr uint32_t CURIOUS  = fnv1a("CURIOUS");
-  constexpr uint32_t CONFUSED = fnv1a("CONFUSED");
-  constexpr uint32_t WAKE_UP  = fnv1a("WAKE_UP");
+  constexpr uint32_t EMO_NEUTRAL  = fnv1a("NEUTRAL");
+  constexpr uint32_t EMO_HAPPY    = fnv1a("HAPPY");
+  constexpr uint32_t EMO_ANGRY    = fnv1a("ANGRY");
+  constexpr uint32_t EMO_SLEEPY   = fnv1a("SLEEPY");
+  constexpr uint32_t EMO_CURIOUS  = fnv1a("CURIOUS");
+  constexpr uint32_t EMO_CONFUSED = fnv1a("CONFUSED");
+  constexpr uint32_t EMO_WAKE_UP  = fnv1a("WAKE_UP");
 }
 
 namespace ModeHash {
-  constexpr uint32_t SLEEP    = fnv1a("SLEEP");
-  constexpr uint32_t CALM     = fnv1a("CALM");
-  constexpr uint32_t CURIOUS  = fnv1a("CURIOUS");
-  constexpr uint32_t PLAYFUL  = fnv1a("PLAYFUL");
+  constexpr uint32_t MODE_SLEEP    = fnv1a("SLEEP");
+  constexpr uint32_t MODE_CALM     = fnv1a("CALM");
+  constexpr uint32_t MODE_CURIOUS  = fnv1a("CURIOUS");
+  constexpr uint32_t MODE_PLAYFUL  = fnv1a("PLAYFUL");
 }
 
 // Hash ArduinoJson key
@@ -192,8 +194,8 @@ struct Keyframe {
 // =====================================================================================
 
 Adafruit_SSD1306 oled(SCREEN_W, SCREEN_H, &Wire, -1);
-// FIX B1: RoboEyes<T> nhận POINTER tới display, không phải reference
-RoboEyes<Adafruit_SSD1306> roboEyes(&oled);
+// RoboEyes<T>(AdafruitDisplay &disp) - constructor lấy REFERENCE (không phải pointer)
+RoboEyes<Adafruit_SSD1306> roboEyes(oled);
 ESP_I2S i2sOut;
 Preferences prefs;
 SemaphoreHandle_t gStateMutex = nullptr;  // (dự phòng cho tương lai, hiện chưa dùng)
@@ -469,12 +471,12 @@ public:
   // Lookup emotion từ hash (O(1) thay vì strcmp chuỗi)
   static Emotion fromHash(uint32_t h) {
     switch (h) {
-      case EmoHash::HAPPY:    return EMO_HAPPY;
-      case EmoHash::ANGRY:    return EMO_ANGRY;
-      case EmoHash::SLEEPY:   return EMO_SLEEPY;
-      case EmoHash::CURIOUS:  return EMO_CURIOUS;
-      case EmoHash::CONFUSED: return EMO_CONFUSED;
-      case EmoHash::WAKE_UP:  return EMO_WAKE_UP;
+      case EmoHash::EMO_HAPPY:    return EMO_HAPPY;
+      case EmoHash::EMO_ANGRY:    return EMO_ANGRY;
+      case EmoHash::EMO_SLEEPY:   return EMO_SLEEPY;
+      case EmoHash::EMO_CURIOUS:  return EMO_CURIOUS;
+      case EmoHash::EMO_CONFUSED: return EMO_CONFUSED;
+      case EmoHash::EMO_WAKE_UP:  return EMO_WAKE_UP;
       default:                return EMO_NEUTRAL;
     }
   }
@@ -763,8 +765,10 @@ public:
     if (n1 != s1 && (now - lastChange) > IR_DEBOUNCE_MS) {
       lastChange = now; s1 = n1;
       if (n1 == IR_ACTIVE_LEVEL) {
-        t1Down = now; isActive = true; display.notifyPresence();
-    } else {
+        t1Down = now; isActive = true;
+        // Fix C28: don't call display.notifyPresence() here (forward decl problem).
+        // Brain task will call it when IR_TAP or any presence event arrives.
+      } else {
         isActive = false;
         unsigned long dur = now - t1Down;
         if (dur < IR_TAP_MAX_MS) { tapCount++; lastRelease = now; }
@@ -1101,6 +1105,70 @@ public:
 } display;
 
 // =====================================================================================
+// SECTION P: AUTONOMY (placed BEFORE UsbLink so UsbLink JSON handler can call setMode)
+// =====================================================================================
+
+class Autonomy {
+public:
+  AutoMode mode = AUTO_CURIOUS;
+  unsigned long manualUntil = 0, lastAction = 0;
+  uint32_t lastBeat = 0;
+  uint16_t interval = 4000;
+
+  void notifyManual() {
+    manualUntil = millis() + 8000;
+    display.notifyPresence();
+  }
+  bool isManual() const { return (int32_t)(millis() - manualUntil) < 0; }
+
+  void setMode(AutoMode m) {
+    mode = m; lastAction = millis();
+    display.notifyPresence();
+    if      (m == AUTO_SLEEP)   emotion.setEmotion(EMO_SLEEPY);
+    else if (m == AUTO_CURIOUS) emotion.setEmotion(EMO_CURIOUS);
+    else if (m == AUTO_CALM)    emotion.setEmotion(EMO_NEUTRAL);
+    else if (m == AUTO_PLAYFUL) emotion.setEmotion(EMO_HAPPY);
+  }
+
+  void update() {
+    if (isManual()) return;
+
+    if (audioR.isMusic()) {
+      AudioMetrics m; audio.get(m);
+      if (m.beatCount != lastBeat) {
+        lastBeat = m.beatCount;
+        head.setTarget(head.pan.target - head.pan.offset, 98.0f, 90.0f);
+      } else if (!head.isMoving()) {
+        head.setTarget(head.pan.target - head.pan.offset, 90.0f, 60.0f);
+      }
+      return;
+    }
+
+    if (gesture.playing || mode == AUTO_SLEEP) return;
+
+    if (millis() - lastAction >= interval) {
+      lastAction = millis();
+      interval = random(4000, 8000);
+      switch (mode) {
+        case AUTO_CURIOUS:
+          if (random(2)) head.setTarget(random(70, 110), random(80, 100), 80.0f);
+          else gesture.play(GES_TILT_CURIOUS);
+          break;
+        case AUTO_PLAYFUL:
+          gesture.play(GES_BOUNCE_HAPPY);
+          break;
+        case AUTO_CALM:
+          head.setTarget(PAN_CENTER_DEG + random(-15, 16), TILT_CENTER_DEG + random(-3, 4), 50.0f);
+          break;
+        default: break;
+      }
+    }
+  }
+} autonomy;
+
+// (Old SECTION P removed - now above)
+
+// =====================================================================================
 // SECTION O: USB BINARY PROTOCOL + JSON (hash-dispatched)
 // =====================================================================================
 
@@ -1200,10 +1268,10 @@ public:
           if (kv.value().is<const char*>()) {
             uint32_t mh = hashKey(kv.value().as<const char*>());
             switch (mh) {
-              case ModeHash::SLEEP:   autonomy.setMode(AUTO_SLEEP); break;
-              case ModeHash::CALM:    autonomy.setMode(AUTO_CALM); break;
-              case ModeHash::CURIOUS: autonomy.setMode(AUTO_CURIOUS); break;
-              case ModeHash::PLAYFUL: autonomy.setMode(AUTO_PLAYFUL); break;
+              case ModeHash::MODE_SLEEP:   autonomy.setMode(AUTO_SLEEP); break;
+              case ModeHash::MODE_CALM:    autonomy.setMode(AUTO_CALM); break;
+              case ModeHash::MODE_CURIOUS: autonomy.setMode(AUTO_CURIOUS); break;
+              case ModeHash::MODE_PLAYFUL: autonomy.setMode(AUTO_PLAYFUL); break;
             }
           }
           break;
@@ -1236,67 +1304,7 @@ public:
   }
 } usb;
 
-// =====================================================================================
-// SECTION P: AUTONOMY
-// =====================================================================================
-
-class Autonomy {
-public:
-  AutoMode mode = AUTO_CURIOUS;
-  unsigned long manualUntil = 0, lastAction = 0;
-  uint32_t lastBeat = 0;
-  uint16_t interval = 4000;
-
-  void notifyManual() {
-    manualUntil = millis() + 8000;
-    display.notifyPresence();
-  }
-  bool isManual() const { return (int32_t)(millis() - manualUntil) < 0; }
-
-  void setMode(AutoMode m) {
-    mode = m; lastAction = millis();
-    display.notifyPresence();
-    if      (m == AUTO_SLEEP)   emotion.setEmotion(EMO_SLEEPY);
-    else if (m == AUTO_CURIOUS) emotion.setEmotion(EMO_CURIOUS);
-    else if (m == AUTO_CALM)    emotion.setEmotion(EMO_NEUTRAL);
-    else if (m == AUTO_PLAYFUL) emotion.setEmotion(EMO_HAPPY);
-  }
-
-  void update() {
-    if (isManual()) return;
-
-    if (audioR.isMusic()) {
-      AudioMetrics m; audio.get(m);
-      if (m.beatCount != lastBeat) {
-        lastBeat = m.beatCount;
-        head.setTarget(head.pan.target - head.pan.offset, 98.0f, 90.0f);
-      } else if (!head.isMoving()) {
-        head.setTarget(head.pan.target - head.pan.offset, 90.0f, 60.0f);
-      }
-      return;
-    }
-
-    if (gesture.playing || mode == AUTO_SLEEP) return;
-
-    if (millis() - lastAction >= interval) {
-      lastAction = millis();
-      interval = random(4000, 8000);
-      switch (mode) {
-        case AUTO_CURIOUS:
-          if (random(2)) head.setTarget(random(70, 110), random(80, 100), 80.0f);
-          else gesture.play(GES_TILT_CURIOUS);
-          break;
-        case AUTO_PLAYFUL:
-          gesture.play(GES_BOUNCE_HAPPY);
-          break;
-        case AUTO_CALM:
-          head.setTarget(PAN_CENTER_DEG + random(-15, 16), TILT_CENTER_DEG + random(-3, 4), 50.0f);
-          break;
-        default: break;
-      }
-    }
-  }
-} autonomy;
+// (Autonomy moved BEFORE UsbLink - see above)
 
 // =====================================================================================
 // SECTION Q: FREERTOS TASKS (2 cores)
@@ -1347,6 +1355,7 @@ void taskBrain(void*) {
     IrEvent ev = ir.consume();
     if (ev != IR_NONE) {
       autonomy.notifyManual();
+      display.notifyPresence();  // Move from DualIr -> Brain (fix forward decl)
       switch (ev) {
         case IR_TAP:    emotion.setEmotion(EMO_HAPPY); break;
         case IR_DOUBLE: {
