@@ -1,39 +1,3 @@
-/**
- * =====================================================================================
- *  MIU EILIK ESP32-S3 - OPTIMIZED FIRMWARE v6.3 (bug-fixed v6.2 + audit)
- *  Tối ưu:
- *    - PROGMEM: chuyển string/keyframe ra Flash (~5KB RAM saved)
- *    - FNV-1a hash thay strcmp() cho JSON command dispatch (~10x faster)
- *    - I2S streaming: scale on-the-fly, single-pass audio analysis
- *    - Display: I2C timeout, 30 FPS stable, double-buffer cho OLED stream
- *    - Char array thay String trong hot path
- *    - Bounded array thay std::vector trong FilePlayer
- *
- *  v6.3 AUDIT (sau rà soát toàn diện):
- *    C1: gestureIdx underflow guard (uint8_t - 1 = 255 nếu gestureIdx == 0)
- *    C6/C8: 2KB stack buffer -> BSS member (tránh overflow trong task 4KB)
- *    C18: Servo dt thực từ millis() thay vì hardcode 20ms
- *    C24: streamBuf double-buffer (race giữa taskUsb và taskDisplay)
- *    C25-C26: minor cleanup
- *
- *  v6.2 BUG FIXES so với v6.1:
- *    B1: RoboEyes constructor cần POINTER
- *    B5: Servo setTarget giữ velocity khi chuỗi lệnh cùng chiều
- *    B6: AutoMode dùng % thay & (nếu count thay đổi sẽ không crash)
- *    M1: Gesture current bounds check
- *    M3: Audio analyzer subsample 2x (giảm 50% CPU)
- *    M4: FPS dùng delta-time chính xác
- *    M6: PROGMEM float không portable (chuyển sang RAM)
- *    S1-S5: Bỏ dead code (gStateMutex, vector, sCurve5, partial update fields,
- *          unused PROGMEM strings)
- *
- *  KHÔNG CÓ WEB UI - điều khiển qua:
- *    1. IR sensor - tap/double/hold/swipe
- *    2. USB Serial (giao thức nhị phân [0xE1][0x1C][TYPE]...)
- *    3. USB Serial JSON (text command dễ debug)
- * =====================================================================================
- */
-
 #include <Arduino.h>
 #include <Wire.h>
 #include <Preferences.h>
@@ -46,9 +10,23 @@
 #include <freertos/task.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
+#include <LittleFS.h>   // Fix C28: FilePlayer cần LittleFS/File
 
 #include "ESP_I2S.h"
+// Macro collision guard:
+//   RoboEyes.h defines DEFAULT, TIRED, ANGRY, HAPPY at top level.
+//   Some Arduino/Adafruit headers may also define these -> redefine warning/error.
+//   Solution: undefine them before including, then redefine our own values.
+#undef DEFAULT
+#undef TIRED
+#undef ANGRY
+#undef HAPPY
 #include "FluxGarage_RoboEyes.h"
+// Bring back RoboEy's values (we use them via names below)
+#define DEFAULT 0
+#define TIRED   1
+#define ANGRY   2
+#define HAPPY   3
 
 // =====================================================================================
 // SECTION A: CONFIG (PROGMEM const để tiết kiệm RAM)

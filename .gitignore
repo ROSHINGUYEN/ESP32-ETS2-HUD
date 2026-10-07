@@ -6,6 +6,7 @@ build/
 *.bin
 *.elf
 *.map
+*.gitignore
 
 # OS files
 Thumbs.db
