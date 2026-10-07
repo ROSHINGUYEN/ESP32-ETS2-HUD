@@ -204,6 +204,8 @@ Format hỗ trợ: **WAV PCM 16-bit 44.1kHz stereo** (skip 44-byte header) hoặ
 | C6/C8 | 2KB buffer trên stack trong task 4KB | 🔴 Stack overflow |
 | C18 | `head.update(0.020f)` hardcode dt | 🟠 Stall servo |
 | C24 | `streamBuf` race giữa 2 core | 🔴 Tear hình |
+| C28 | Macro `DEFAULT/HAPPY` collision với RoboEyes | 🔴 Build fail |
+| P1 | `ESP32PWM.cpp:212` `while(1);` infinite loop | 🟠 Rule checker |
 | S1-S5 | Dead code (mutex, vector, fields) | 🟡 Cleanup |
 
 ---
@@ -215,8 +217,11 @@ E:\MIU_EILIK_ESP32-S3\
 ├── platformio.ini              ← Build config (env: eilik_s3)
 ├── partitions_16mb.csv         ← A/B OTA + LittleFS
 ├── README.md                   ← File này
+├── patches/                    ← Patch cho library bên thứ 3 (apply tự động)
+│   └── ESP32Servo/
+│       └── ESP32PWM.cpp.diff   ← Sửa `while(1);` -> `return -1` (rule checker)
 └── miu_eilik\                  ← Source folder
-    ├── miu_eilik.ino           ← Main firmware (1405 dòng)
+    ├── miu_eilik.ino           ← Main firmware (1429 dòng)
     ├── ESP_I2S.h               ← I2S driver
     ├── FluxGarage_RoboEyes.h   ← Eye animation library
     └── partitions.csv          ← (legacy, dùng partitions_16mb.csv ở root)
