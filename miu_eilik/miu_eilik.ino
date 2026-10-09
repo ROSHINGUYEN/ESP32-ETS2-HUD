@@ -38,7 +38,10 @@
 #define OLED_ADDR               0x3C
 #define SCREEN_W                128
 #define SCREEN_H                64
-#define OLED_I2C_HZ             800000
+// FIX: 800 kHz vượt quá spec SSD1306 (max 400 kHz). Nhiều module rẻ treo I2C ở
+// tốc độ này, khiến oled.begin() fail im lặng -> màn hình trắng, mắt không hiện.
+// 400 kHz an toàn cho mọi module SSD1306, vẫn đủ nhanh cho 30 FPS animation.
+#define OLED_I2C_HZ             400000
 #define OLED_I2C_TIMEOUT_MS     50      // tránh block khi I2C lỗi
 
 // Servo
@@ -827,19 +830,35 @@ public:
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
     Wire.setClock(OLED_I2C_HZ);
     Wire.setTimeOut(OLED_I2C_TIMEOUT_MS);
-    oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+    // FIX: thêm log để xác nhận OLED đã init. Nếu fail, sẽ thấy ngay trên Serial.
+    // - oled.begin() trả về false nếu không ACK được địa chỉ I2C (OLED hỏng,
+    //   dây lỏng, địa chỉ sai, hoặc I2C clock quá cao).
+    // - Bắt đầu ở DISP_EYES (không phải DISP_CLOCK) để user thấy mắt ngay khi boot.
+    bool oledOk = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+    Serial0.printf("[OLED] begin @ 0x%02X, %dx%d, I2C=%d Hz -> %s\n",
+                   OLED_ADDR, SCREEN_W, SCREEN_H, OLED_I2C_HZ,
+                   oledOk ? "OK" : "FAIL (check wiring/addr/clock)");
+    if (!oledOk) {
+      // Không treo - vẫn tiếp tục, mọi lệnh oled sau đó là no-op
+      return;
+    }
     oled.clearDisplay(); oled.display();
 
     roboEyes.begin(SCREEN_W, SCREEN_H, 30);
     roboEyes.setAutoblinker(ON, 3, 2);
     roboEyes.setIdleMode(ON, 2, 2);
     roboEyes.setMood(DEFAULT);
+    // FIX: mở mắt ngay lập tức (mặc định begin() set height=1, phải chờ animation)
+    roboEyes.setWidth(36, 36);
+    roboEyes.setHeight(36, 36);
 
     bootMs = millis();
     fpsTimer = millis();
     lastPresence = millis();
     lastTrendMs = millis();
     baseTimeSec = computeBaseTime();
+    // FIX: bắt đầu ở DISP_EYES để mắt hiện ngay khi boot, không cần IR event
+    mode = DISP_EYES;
   }
 
   static unsigned long computeBaseTime() {
