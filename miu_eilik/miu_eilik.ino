@@ -2,6 +2,8 @@
 #include <Wire.h>
 #include <Preferences.h>
 #include <cmath>
+#include <time.h>
+#include <sys/time.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ESP32Servo.h>
@@ -29,25 +31,26 @@
 #define HAPPY   3
 
 // =====================================================================================
+// MACROS: LOGGING RA CA SERIAL (USB CDC) VA SERIAL0 (UART0) CHO ARDUINO IDE MONITOR
+// =====================================================================================
+#define LOG_PRINT(...)   do { Serial.print(__VA_ARGS__);   Serial0.print(__VA_ARGS__); } while(0)
+#define LOG_PRINTLN(...) do { Serial.println(__VA_ARGS__); Serial0.println(__VA_ARGS__); } while(0)
+#define LOG_PRINTF(...)  do { Serial.printf(__VA_ARGS__);  Serial0.printf(__VA_ARGS__); } while(0)
+
+// =====================================================================================
 // SECTION A: CONFIG (PROGMEM const để tiết kiệm RAM)
 // =====================================================================================
 
-// OLED
-// CẢNH BÁO: GPIO 8 và 9 dùng cho OLED I2C, nhưng ESP32-S3-WROOM-1-N16R8
-// dùng GPIO 8..17 cho OPI PSRAM. Nếu board_build.arduino.memory_type = qio_opi
-// thì PSRAM driver chiếm GPIO 8/9 -> Wire.begin(8,9) sẽ fail -> OLED đen.
-// Đã fix bằng cách đổi memory_type = qio_qspi trong platformio.ini (tắt PSRAM driver).
-// Nếu cần PSRAM thật, phải đổi OLED sang GPIO khác (1/2 hoặc 41/42 chẳng hạn)
+// OLED SSD1306 (128x64) I2C
+// Mặc định: SDA = GPIO 8, SCL = GPIO 9 (phù hợp với ESP32-S3-WROOM-1 / DevKitC-1)
+// Tự động nhận diện địa chỉ 0x3C hoặc 0x3D khi khởi động
 #define PIN_OLED_SDA            8
 #define PIN_OLED_SCL            9
 #define OLED_ADDR               0x3C
 #define SCREEN_W                128
 #define SCREEN_H                64
-// FIX: 800 kHz vượt quá spec SSD1306 (max 400 kHz). Nhiều module rẻ treo I2C ở
-// tốc độ này, khiến oled.begin() fail im lặng -> màn hình trắng, mắt không hiện.
-// 400 kHz an toàn cho mọi module SSD1306, vẫn đủ nhanh cho 30 FPS animation.
-#define OLED_I2C_HZ             400000
-#define OLED_I2C_TIMEOUT_MS     50      // tránh block khi I2C lỗi
+#define OLED_I2C_HZ             100000  // 100kHz chuan on dinh cao cho moi loai module & day cam Dupont
+#define OLED_I2C_TIMEOUT_MS     50      // timeout tránh treo khi bus I2C lỗi
 
 // Servo
 #define PIN_SERVO_PAN           4
@@ -111,7 +114,7 @@
 
 // Bounds (giúp constrain an toàn enum từ int)
 #define EMOTION_COUNT           7
-#define GESTURE_COUNT           8
+#define GESTURE_COUNT           11
 #define AUDIO_SRC_COUNT         4
 
 // =====================================================================================
@@ -122,9 +125,53 @@ enum AudioSource : uint8_t { SRC_NONE = 0, SRC_FILE, SRC_USB_PC, SRC_BT_EXT };
 enum VizStyle    : uint8_t { VIZ_BEAT_EYES = 0, VIZ_WAVE_EYES, VIZ_BARS_EYES };
 enum DisplayMode : uint8_t { DISP_CLOCK = 0, DISP_EYES = 1, DISP_VISUAL = 2, DISP_STREAM = 3 };
 enum Emotion     : uint8_t { EMO_NEUTRAL, EMO_HAPPY, EMO_ANGRY, EMO_SLEEPY, EMO_CURIOUS, EMO_CONFUSED, EMO_WAKE_UP };
-enum Gesture     : uint8_t { GES_NONE, GES_NOD_YES, GES_SHAKE_NO, GES_TILT_CURIOUS, GES_SLEEP_DROOP, GES_WAKE_STRETCH, GES_BOUNCE_HAPPY, GES_ANGRY_SNAP };
+enum Gesture     : uint8_t {
+  GES_NONE,
+  GES_NOD_YES,        // Gật đầu (có sẵn)
+  GES_SHAKE_NO,       // Lắc đầu (có sẵn)
+  GES_TILT_CURIOUS,   // Nghiêng đầu tò mò (có sẵn)
+  GES_SLEEP_DROOP,    // Buồn ngủ (có sẵn)
+  GES_WAKE_STRETCH,   // Vươn vai khi thức (có sẵn)
+  GES_BOUNCE_HAPPY,   // Nhún nhảy vui (có sẵn)
+  GES_ANGRY_SNAP,     // Cáu giận (có sẵn)
+  // -------- Them moi tu desk-emoji-v3 --------
+  GES_HEAD_LOOK_LEFT,   // Quay đầu sang trái (mượt)
+  GES_HEAD_LOOK_RIGHT,  // Quay đầu sang phải (mượt)
+  GES_HEAD_LOOK_UP,     // Ngước lên
+  GES_HEAD_LOOK_DOWN    // Cúi xuống
+};
 enum IrEvent     : uint8_t { IR_NONE, IR_TAP, IR_DOUBLE, IR_TRIPLE, IR_HOLD, IR_SWIPE_RIGHT, IR_SWIPE_LEFT };
 enum AutoMode    : uint8_t { AUTO_SLEEP, AUTO_CALM, AUTO_CURIOUS, AUTO_PLAYFUL };
+
+// Forward declarations: Desk-Emoji action and servo functions
+void head_move(int x_offset = 0, int y_offset = 0, int servo_delay = 10);
+void head_center(int servo_delay = 10);
+void head_right(int offset = 20);
+void head_left(int offset = 20);
+void head_down(int offset = 15);
+void head_up(int offset = 15);
+void head_nod(int servo_delay = 3);
+void head_shake(int servo_delay = 3);
+void head_roll_left(int servo_delay = 10);
+void head_roll_right(int servo_delay = 10);
+
+void eye_blink();
+void eye_happy();
+void eye_sad();
+void eye_anger();
+void eye_surprise();
+void eye_right();
+void eye_left();
+void eye_center();
+
+void executeCommand(String cmd);
+void sequent_act(String actions);
+void random_act();
+void speech_act();
+void async_sequent_act(String actions);
+void async_random_act();
+void async_speech_act();
+void processSerialLine(String line);
 
 // =====================================================================================
 // SECTION C: FNV-1a HASH (nhanh hơn strcmp 10-50x)
@@ -334,6 +381,14 @@ public:
 
   void center() { setTarget(PAN_CENTER_DEG, TILT_CENTER_DEG, 120.0f); }
 
+  // -------- Thêm mới từ desk-emoji-v3: 4 hướng nhìn (dùng setTarget trực tiếp) --------
+  // Smooth hơn vì ServoAxis đã có trapezoidal motion (giatoc + giamtoc)
+  // Pan range: 40..140 (X), 65..115 (Y)
+  void lookLeft()  { setTarget(60,  90, 180.0f); }   // Quay trai 30 do
+  void lookRight() { setTarget(120, 90, 180.0f); }   // Quay phai 30 do
+  void lookUp()    { setTarget(90,  70, 180.0f); }   // Nguoc len 20 do
+  void lookDown()  { setTarget(90,  110, 180.0f); }  // Cui xuong 20 do
+
   bool isMoving() const { return pan.moving || tilt.moving; }
 
   void update(float dt) {
@@ -372,6 +427,14 @@ static const Keyframe PROGMEM TRACK_WAKE[]    = { {80,105,350},{90,76,500},{100,
 static const Keyframe PROGMEM TRACK_BOUNCE[]  = { {90,102,110},{90,86,120},{90,102,110},{90,90,150} };
 static const Keyframe PROGMEM TRACK_ANGRY[]   = { {90,114,80},{70,114,100},{110,114,100},{90,90,200} };
 
+// -------- Thêm mới từ desk-emoji-v3 (chuyển động nét mượt với keyframe) --------
+// 4 hướng nhìn cơ bản: trái/phải/lên/xuống (dùng 2 giai đoạn: tới -> về)
+// Pan range của miu_eilik: 40..140 (X), 65..115 (Y)
+static const Keyframe PROGMEM TRACK_LOOK_LEFT[]  = { {60, 90, 220}, {90, 90, 250} };   // 60 = 90 - 30
+static const Keyframe PROGMEM TRACK_LOOK_RIGHT[] = { {120, 90, 220}, {90, 90, 250} };  // 120 = 90 + 30
+static const Keyframe PROGMEM TRACK_LOOK_UP[]    = { {90, 70, 250}, {90, 90, 250} };   // 70 = 90 - 20
+static const Keyframe PROGMEM TRACK_LOOK_DOWN[]  = { {90, 110, 250}, {90, 90, 250} };  // 110 = 90 + 20
+
 // Table các gesture (PROGMEM)
 struct GestureTrack {
   const Keyframe* data;  // pointer tới PROGMEM
@@ -379,13 +442,18 @@ struct GestureTrack {
 };
 
 static const GestureTrack PROGMEM GESTURE_TABLE[] = {
-  { TRACK_NOD,    5 },
-  { TRACK_SHAKE,  5 },
-  { TRACK_CURIOUS,3 },
-  { TRACK_SLEEP,  3 },
-  { TRACK_WAKE,   4 },
-  { TRACK_BOUNCE, 4 },
-  { TRACK_ANGRY,  4 },
+  { TRACK_NOD,        5 },
+  { TRACK_SHAKE,      5 },
+  { TRACK_CURIOUS,    3 },
+  { TRACK_SLEEP,      3 },
+  { TRACK_WAKE,       4 },
+  { TRACK_BOUNCE,     4 },
+  { TRACK_ANGRY,      4 },
+  // -------- Thêm mới --------
+  { TRACK_LOOK_LEFT,  2 },
+  { TRACK_LOOK_RIGHT, 2 },
+  { TRACK_LOOK_UP,    2 },
+  { TRACK_LOOK_DOWN,  2 },
 };
 
 class GesturePlayer {
@@ -807,6 +875,57 @@ public:
 } ir;
 
 // =====================================================================================
+// HELPER: TINH EPOCH TU y/m/d/h/m/s (LOCAL TIME) - TRÁNH PHỤ THUỘC TZ + mktime()
+// =====================================================================================
+
+// Tinh so giay tu 1970-01-01 00:00:00 den thoi diem (y,m,d,h,m,s) dang LOCAL
+// Thuat toan: tinh so ngay tu epoch, nhan 86400 + so giay trong ngay
+static time_t tmToEpoch(int y, int mo, int d, int h, int mi, int s) {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return 0;
+  // So nam nhuan tu 1970 den y-1
+  int yFromEpoch = y - 1970;
+  // So ngay tu 1970-01-01 den 1970-y-1  (co tinh nhuan)
+  // Cong thuc: 365*y + so nam nhuan
+  int leapDays = (yFromEpoch + 1) / 4 - (yFromEpoch + 1) / 100 + (yFromEpoch + 1) / 400;
+  // Hien dang o 1970-01-01, can tinh den ngay dau tien cua y
+  int daysUpToYear = yFromEpoch * 365 + leapDays;
+  // So ngay tu dau nam y den dau thang mo
+  static const int cumDays[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  int daysUpToMonth = cumDays[mo - 1];
+  // Cong them 1 ngay neu y la nam nhuan va mo > 2
+  if (mo > 2 && ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0))) daysUpToMonth++;
+  int totalDays = daysUpToYear + daysUpToMonth + (d - 1);
+  return (time_t)totalDays * 86400L + (time_t)h * 3600L + (time_t)mi * 60L + (time_t)s;
+}
+
+// Tinh y/m/d/h/m/s tu epoch (epoch la LOCAL time)
+static void epochToTm(time_t epoch, int& y, int& mo, int& d, int& h, int& mi, int& s) {
+  // Tinh gio trong ngay
+  int secOfDay = (int)(epoch % 86400L);
+  if (secOfDay < 0) secOfDay += 86400L;  // phong TH am
+  h = secOfDay / 3600;
+  mi = (secOfDay % 3600) / 60;
+  s = secOfDay % 60;
+
+  // Tinh ngay
+  long days = (long)(epoch / 86400L);
+  if ((long)epoch < 0 && (long)epoch % 86400L != 0) days--;  // xu ly am chinh xac
+
+  // Thuat toan "date from ordinal" tu "Howard Hinnant" - nhanh va chinh xac
+  // Dich sang epoch days: 1970-01-01 = 0
+  days += 719468;  // shift tu 0000-03-01
+  long era = (days >= 0 ? days : days - 146096) / 146097;
+  long doe = days - era * 146097;             // [0, 146096]
+  long yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;  // [0, 399]
+  y = (int)(yoe) + (int)(era) * 400;
+  long doy = doe - (365*yoe + yoe/4 - yoe/100);  // [0, 365]
+  long mp = (5*doy + 2) / 153;                  // [0, 11]
+  d = (int)(doy - (153*mp + 2)/5 + 1);          // [1, 31]
+  mo = (int)(mp < 10 ? mp + 3 : mp - 9);        // [1, 12]
+  if (mo <= 2) y += 1;
+}
+
+// =====================================================================================
 // SECTION N: DISPLAY MANAGER (clock + eyes + visualizer)
 // =====================================================================================
 
@@ -826,85 +945,225 @@ public:
   unsigned long streamLastMs = 0;
   unsigned long lastPresence = 0;
   unsigned long bootMs = 0;
-  unsigned long baseTimeSec = 0;
-  float tempC = 26.8f;
-  int8_t trend[7] = {5, 8, 11, 15, 13, 9, 6};
-  unsigned long lastTrendMs = 0;
+  float tempC = 27.5f;
+
+  // He thong dong ho thuc phan cung (POSIX RTC)
+  int clockYear  = 2026;
+  int clockMonth = 10;
+  int clockDay   = 9;
+  int clockHour  = 20;
+  int clockMin   = 0;
+  int clockSec   = 0;
+  int clockWday  = 5;
 
   void begin() {
+    LOG_PRINTLN(F("\n========================================"));
+    LOG_PRINTLN(F(" [OLED] KHOI TAO MAN HINH SSD1306..."));
+    LOG_PRINTF(" [OLED] SDA=GPIO %d, SCL=GPIO %d, Clock=%d Hz\n",
+               PIN_OLED_SDA, PIN_OLED_SCL, OLED_I2C_HZ);
+
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
     Wire.setClock(OLED_I2C_HZ);
     Wire.setTimeOut(OLED_I2C_TIMEOUT_MS);
 
-    // FIX: I2C scanner để debug wiring/address. In ra tất cả thiết bị tìm thấy
-    // trên bus I2C (0x03..0x77). Nếu không thấy gì -> dây lỏng, OLED hỏng, hoặc
-    // GPIO bị PSRAM/spi flash chiếm.
-    Serial0.printf("[I2C] scanning SDA=%d SCL=%d @ %d Hz...\n",
-                   PIN_OLED_SDA, PIN_OLED_SCL, OLED_I2C_HZ);
-    uint8_t foundCount = 0;
-    for (uint8_t addr = 0x03; addr < 0x78; addr++) {
-      Wire.beginTransmission(addr);
+    uint8_t detectedAddr = 0;
+    uint8_t activeSda = PIN_OLED_SDA;
+    uint8_t activeScl = PIN_OLED_SCL;
+
+    struct PinCandidate { uint8_t sda; uint8_t scl; const char* desc; };
+    const PinCandidate candidates[] = {
+      { PIN_OLED_SDA, PIN_OLED_SCL, "Chuan (SDA=8, SCL=9)" },
+      { PIN_OLED_SCL, PIN_OLED_SDA, "Dao nguoc (SDA=9, SCL=8)" },
+      { 1, 2, "Header (SDA=1, SCL=2)" },
+      { 2, 1, "Header dao (SDA=2, SCL=1)" },
+      { 41, 42, "IO41/42 (SDA=41, SCL=42)" },
+      { 42, 41, "IO41/42 dao (SDA=42, SCL=41)" },
+      { 47, 48, "IO47/48 (SDA=47, SCL=48)" },
+      { 48, 47, "IO47/48 dao (SDA=48, SCL=47)" }
+    };
+
+    for (const auto& c : candidates) {
+      Wire.end();
+      pinMode(c.sda, INPUT_PULLUP);
+      pinMode(c.scl, INPUT_PULLUP);
+      delay(2);
+      Wire.begin(c.sda, c.scl);
+      Wire.setClock(100000);
+      Wire.setTimeOut(30);
+
+      Wire.beginTransmission(0x3C);
       if (Wire.endTransmission() == 0) {
-        Serial0.printf("[I2C]   found device @ 0x%02X\n", addr);
-        foundCount++;
+        detectedAddr = 0x3C;
+        activeSda = c.sda;
+        activeScl = c.scl;
+        LOG_PRINTF(" [OLED] => TIM THAY OLED SSD1306 [0x3C] tai %s!\n", c.desc);
+        break;
+      }
+      Wire.beginTransmission(0x3D);
+      if (Wire.endTransmission() == 0) {
+        detectedAddr = 0x3D;
+        activeSda = c.sda;
+        activeScl = c.scl;
+        LOG_PRINTF(" [OLED] => TIM THAY OLED SSD1306 [0x3D] tai %s!\n", c.desc);
+        break;
       }
     }
-    Serial0.printf("[I2C] scan done, %d device(s) found\n", foundCount);
-    if (foundCount == 0) {
-      Serial0.println(F("[I2C] !!! NO DEVICE FOUND - check wiring/PSRAM pin conflict"));
+
+    if (detectedAddr != 0) {
+      Wire.setClock(OLED_I2C_HZ);
+    } else {
+      // Khoi phuc ve chan mac dinh de nguoi dung cam day lai
+      Wire.end();
+      Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
+      Wire.setClock(100000);
+      LOG_PRINTLN(F(" [OLED] !!! CANH BAO: KHONG TIM THAY OLED SSD1306 TREN CAC CHAN THU NGHIEM!"));
+      LOG_PRINTLN(F(" [OLED] HUONG DAN NOI DAY CHUAN:"));
+      LOG_PRINTLN(F("   1. VCC cua OLED    -> Chan 3V3 (3.3V) tren bo ESP32-S3"));
+      LOG_PRINTLN(F("   2. GND cua OLED    -> Chan GND tren bo ESP32-S3"));
+      LOG_PRINTLN(F("   3. SDA cua OLED    -> Chan GPIO 8 (IO8)"));
+      LOG_PRINTLN(F("   4. SCL/SCK cua OLED -> Chan GPIO 9 (IO9)"));
+      LOG_PRINTLN(F("   (Luu y: kiem tra tiep xuc day breadboard/day Dupont co bi long khong)"));
     }
 
-    // FIX: thêm log để xác nhận OLED đã init. Nếu fail, sẽ thấy ngay trên Serial.
-    // - oled.begin() trả về false nếu không ACK được địa chỉ I2C (OLED hỏng,
-    //   dây lỏng, địa chỉ sai, hoặc I2C clock quá cao).
-    // - Bắt đầu ở DISP_EYES (không phải DISP_CLOCK) để user thấy mắt ngay khi boot.
-    bool oledOk = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-    Serial0.printf("[OLED] begin @ 0x%02X, %dx%d, I2C=%d Hz -> %s\n",
-                   OLED_ADDR, SCREEN_W, SCREEN_H, OLED_I2C_HZ,
-                   oledOk ? "OK" : "FAIL (check wiring/addr/clock)");
-    if (!oledOk) {
-      // Không treo - vẫn tiếp tục, mọi lệnh oled sau đó là no-op
-      return;
-    }
-    oled.clearDisplay(); oled.display();
+    uint8_t targetAddr = (detectedAddr != 0) ? detectedAddr : OLED_ADDR;
+    LOG_PRINTF(" [OLED] Bat dau khoi tao Adafruit SSD1306 tai 0x%02X...\n", targetAddr);
 
-    // FIX: tự kiểm tra OLED ngay - nếu clear+display OK, thì I2C đã thông suốt
-    // và mắt sẽ hiện. Nếu vẫn đen -> có thể OLED hỏng đèn nền hoặc VCC không đủ.
-    Serial0.println(F("[OLED] test pattern (3s) - all pixels ON"));
-    for (uint8_t i = 0; i < 3; i++) {
-      oled.fillScreen(SSD1306_WHITE);
+    // QUAN TRONG: Tham so periphBegin = false de Adafruit khong ghi de Wire.begin() mac dinh cua board!
+    bool oledOk = oled.begin(SSD1306_SWITCHCAPVCC, targetAddr, false, false);
+    LOG_PRINTF(" [OLED] Ket qua oled.begin -> %s\n", oledOk ? "OK (HOAT DONG TOT)" : "FAIL (THAT BAI)");
+
+    if (oledOk) {
+      oled.cp437(true); // Kich hoat bo ky tu CP437 cho ky hieu do C (degree)
+      // Hien thi Splash chao mung ngay lap tuc de xac nhan phan cung OLED
+      oled.clearDisplay();
+      oled.drawRoundRect(0, 0, SCREEN_W, SCREEN_H, 6, SSD1306_WHITE);
+      oled.setTextSize(1);
+      oled.setTextColor(SSD1306_WHITE);
+      oled.setCursor(20, 16);
+      oled.print(F("MIU EILIK ROBOT"));
+      oled.setCursor(22, 30);
+      oled.printf("OLED 1306 [0x%02X]", targetAddr);
+      oled.setCursor(30, 44);
+      oled.print(F("KHOI DONG..."));
       oled.display();
-      delay(1000);
+      delay(800);
     }
 
+    // Khoi tao RoboEyes
     roboEyes.begin(SCREEN_W, SCREEN_H, 30);
     roboEyes.setAutoblinker(ON, 3, 2);
     roboEyes.setIdleMode(ON, 2, 2);
     roboEyes.setMood(DEFAULT);
-    // FIX: mở mắt ngay lập tức (mặc định begin() set height=1, phải chờ animation)
     roboEyes.setWidth(36, 36);
     roboEyes.setHeight(36, 36);
+    roboEyes.open(); // BAT BUOC: Mo mat ngay lap tuc (mac dinh thu vien bat dau voi mat nham)
+    roboEyes.eyeLheightCurrent = 36;
+    roboEyes.eyeRheightCurrent = 36;
 
     bootMs = millis();
     fpsTimer = millis();
     lastPresence = millis();
-    lastTrendMs = millis();
-    baseTimeSec = computeBaseTime();
-    // FIX: bắt đầu ở DISP_EYES để mắt hiện ngay khi boot, không cần IR event
-    mode = DISP_EYES;
+    initClock();
+    mode = DISP_CLOCK; // Bat dau o che do dong ho thoi gian thuc
+
+    if (oledOk) {
+      drawClock();
+    }
+    LOG_PRINTLN(F("========================================\n"));
   }
 
-  static unsigned long computeBaseTime() {
-    int yr = 2026, mo = 1, md = 1, h = 0, mn = 0, sc = 0;
+  static bool isLeap(int y) {
+    return ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0));
+  }
+
+  static int daysInMonth(int y, int m) {
+    const int dim[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (m == 2 && isLeap(y)) return 29;
+    if (m >= 1 && m <= 12) return dim[m - 1];
+    return 30;
+  }
+
+  void initClock() {
+    // POSIX TZ: "ICT-7" nghia la Indochina Time (UTC+7, VN khong co DST)
+    setenv("TZ", "ICT-7", 1);
+    tzset();
+
     const char* ds = __DATE__;
     const char* ts = __TIME__;
     char mStr[4] = {0};
-    sscanf(ds, "%3s %d %d", mStr, &md, &yr);
+    int yr = 2026, mo = 10, md = 10, h = 6, mn = 0, sc = 0;
+    if (sscanf(ds, "%3s %d %d", mStr, &md, &yr) == 3) {
+      static const char PROGMEM months[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+      char* p = strstr_P(months, mStr);
+      if (p) mo = ((p - months) / 3) + 1;
+    }
     sscanf(ts, "%d:%d:%d", &h, &mn, &sc);
-    static const char PROGMEM M[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
-    char* p = strstr_P(M, mStr);
-    if (p) mo = ((p - M) / 3) + 1;
-    return (unsigned long)h * 3600 + (unsigned long)mn * 60 + sc;
+
+    // Thoi gian compile tren PC la gio LOCAL Vietnam (UTC+7)
+    // Quy doi ve UTC epoch: tru di 7 gio (25200s)
+    time_t compile_local = tmToEpoch(yr, mo, md, h, mn, sc);
+    time_t compile_utc   = compile_local - (7 * 3600);
+
+    time_t cur = time(nullptr);
+    // Neu RTC hien tai cu hon gio compile (vd: sau khi flash code moi hoac mat nguon)
+    // thi bat buoc cap nhat theo compile_utc
+    if (cur < compile_utc || cur < 1735689600) {
+      struct timeval tv = { .tv_sec = compile_utc, .tv_usec = 0 };
+      settimeofday(&tv, NULL);
+      LOG_PRINTF(" [CLOCK] Khoi tao RTC tu gio compile (%s %s UTC+7): ", ds, ts);
+    } else {
+      LOG_PRINTF(" [CLOCK] Giu nguyen gio RTC dang chay: ");
+    }
+
+    updateClock();
+    LOG_PRINTF("%02d:%02d:%02d - Ngay %02d/%02d/%04d (Thu %d)\n",
+               clockHour, clockMin, clockSec, clockDay, clockMonth, clockYear, clockWday);
+  }
+
+  void setTime(int h, int m, int s) {
+    // Nguoi dung truyen gio LOCAL (0-23, 0-59, 0-59)
+    time_t nowUtc = time(nullptr);
+    struct tm ti;
+    localtime_r(&nowUtc, &ti);
+    // Giu nguyen ngay thang nam LOCAL, thay the gio/phut/giay
+    time_t localEpoch = tmToEpoch(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
+                                  constrain(h, 0, 23),
+                                  constrain(m, 0, 59),
+                                  constrain(s, 0, 59));
+    time_t newUtc = localEpoch - (7 * 3600);
+    struct timeval tv = { .tv_sec = newUtc, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+    updateClock();
+    LOG_PRINTF(" [CLOCK] Da cap nhat gio moi: %02d:%02d:%02d\n", clockHour, clockMin, clockSec);
+  }
+
+  void setDate(int d, int m, int y) {
+    // Nguoi dung truyen ngay LOCAL
+    time_t nowUtc = time(nullptr);
+    struct tm ti;
+    localtime_r(&nowUtc, &ti);
+    int newY = constrain(y, 2020, 2099);
+    int newM = constrain(m, 1, 12);
+    int newD = constrain(d, 1, daysInMonth(newY, newM));
+    time_t localEpoch = tmToEpoch(newY, newM, newD, ti.tm_hour, ti.tm_min, ti.tm_sec);
+    time_t newUtc = localEpoch - (7 * 3600);
+    struct timeval tv = { .tv_sec = newUtc, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+    updateClock();
+    LOG_PRINTF(" [CLOCK] Da cap nhat ngay moi: %02d/%02d/%04d\n", clockDay, clockMonth, clockYear);
+  }
+
+  void updateClock() {
+    time_t nowUtc = time(nullptr);
+    struct tm ti;
+    localtime_r(&nowUtc, &ti);
+    clockYear  = ti.tm_year + 1900;
+    clockMonth = ti.tm_mon + 1;
+    clockDay   = ti.tm_mday;
+    clockHour  = ti.tm_hour;
+    clockMin   = ti.tm_min;
+    clockSec   = ti.tm_sec;
+    clockWday  = ti.tm_wday; // 0=CN, 1=T2, 2=T3, ..., 6=T7
   }
 
   void notifyPresence() {
@@ -915,129 +1174,115 @@ public:
     }
   }
 
-  // ============ CLOCK FRAME ============
+  // ============ WEATHER & DAY/NIGHT ICONS (PIXEL PERFECT) ============
   void drawSun(int16_t cx, int16_t cy) {
+    oled.fillCircle(cx, cy, 4, SSD1306_WHITE);
+    oled.drawFastVLine(cx, cy - 7, 2, SSD1306_WHITE);
+    oled.drawFastVLine(cx, cy + 6, 2, SSD1306_WHITE);
+    oled.drawFastHLine(cx - 7, cy, 2, SSD1306_WHITE);
+    oled.drawFastHLine(cx + 6, cy, 2, SSD1306_WHITE);
+    oled.drawPixel(cx - 4, cy - 4, SSD1306_WHITE);
+    oled.drawPixel(cx + 4, cy - 4, SSD1306_WHITE);
+    oled.drawPixel(cx - 4, cy + 4, SSD1306_WHITE);
+    oled.drawPixel(cx + 4, cy + 4, SSD1306_WHITE);
+  }
+
+  void drawMoon(int16_t cx, int16_t cy) {
     oled.fillCircle(cx, cy, 5, SSD1306_WHITE);
-    oled.drawPixel(cx - 2, cy - 1, SSD1306_BLACK);
-    oled.drawPixel(cx + 2, cy - 1, SSD1306_BLACK);
-    oled.drawPixel(cx - 2, cy + 2, SSD1306_BLACK);
-    oled.drawPixel(cx - 1, cy + 3, SSD1306_BLACK);
-    oled.drawPixel(cx,     cy + 3, SSD1306_BLACK);
-    oled.drawPixel(cx + 1, cy + 3, SSD1306_BLACK);
-    oled.drawPixel(cx + 2, cy + 2, SSD1306_BLACK);
-    const int16_t r = 7;
-    oled.drawLine(cx, cy - r, cx, cy - r - 2, SSD1306_WHITE);
-    oled.drawLine(cx, cy + r, cx, cy + r + 2, SSD1306_WHITE);
-    oled.drawLine(cx - r, cy, cx - r - 2, cy, SSD1306_WHITE);
-    oled.drawLine(cx + r, cy, cx + r + 2, cy, SSD1306_WHITE);
-    oled.drawLine(cx - 5, cy - 5, cx - 7, cy - 7, SSD1306_WHITE);
-    oled.drawLine(cx + 5, cy - 5, cx + 7, cy - 7, SSD1306_WHITE);
-    oled.drawLine(cx - 5, cy + 5, cx - 7, cy + 7, SSD1306_WHITE);
-    oled.drawLine(cx + 5, cy + 5, cx + 7, cy + 7, SSD1306_WHITE);
+    oled.fillCircle(cx + 2, cy - 2, 4, SSD1306_BLACK);
   }
 
-  void drawCloud(int16_t x, int16_t y) {
-    oled.fillCircle(x + 5,  y + 6, 4, SSD1306_WHITE);
-    oled.fillCircle(x + 11, y + 4, 5, SSD1306_WHITE);
-    oled.fillCircle(x + 16, y + 7, 3, SSD1306_WHITE);
-    oled.fillRect(x + 4, y + 6, 13, 5, SSD1306_WHITE);
-  }
-
-  void drawBars(int16_t sx, int16_t baseY) {
-    for (int i = 0; i < 7; i++) {
-      int bx = sx + i * 6;
-      int h = constrain(trend[i], 2, 18);
-      for (int y = 0; y < h; y += 2) {
-        oled.drawFastHLine(bx, baseY - y, 4, SSD1306_WHITE);
-      }
+  void drawStars(int16_t x, int16_t y) {
+    bool blink = (millis() / 500) & 1;
+    oled.drawPixel(x, y, SSD1306_WHITE);
+    if (blink) {
+      oled.drawPixel(x - 1, y, SSD1306_WHITE);
+      oled.drawPixel(x + 1, y, SSD1306_WHITE);
+      oled.drawPixel(x, y - 1, SSD1306_WHITE);
+      oled.drawPixel(x, y + 1, SSD1306_WHITE);
     }
-  }
-
-  void drawDroplet(int16_t x, int16_t y) {
-    oled.drawPixel(x + 2, y, SSD1306_WHITE);
-    oled.drawLine(x + 1, y + 1, x + 3, y + 1, SSD1306_WHITE);
-    oled.drawLine(x, y + 2, x + 4, y + 2, SSD1306_WHITE);
-    oled.drawLine(x, y + 3, x + 4, y + 3, SSD1306_WHITE);
-    oled.drawLine(x + 1, y + 4, x + 3, y + 4, SSD1306_WHITE);
+    oled.drawPixel(x + 5, y + 5, blink ? SSD1306_WHITE : SSD1306_BLACK);
   }
 
   void drawThermometer(int16_t x, int16_t y) {
-    oled.drawLine(x + 1, y, x + 1, y + 4, SSD1306_WHITE);
+    oled.drawFastVLine(x + 1, y, 5, SSD1306_WHITE);
     oled.drawPixel(x, y + 1, SSD1306_WHITE);
     oled.drawPixel(x + 2, y + 1, SSD1306_WHITE);
     oled.fillCircle(x + 1, y + 6, 2, SSD1306_WHITE);
   }
 
+  // ============ MAU 1: SMART CARD LAYOUT (CHUAN PIXEL 128x64) ============
   void drawClock() {
     oled.clearDisplay();
-    unsigned long now = millis();
-    unsigned long curSec = baseTimeSec + (now - bootMs) / 1000;
-    int h = (curSec / 3600) % 24;
-    int m = (curSec / 60) % 60;
-    int s = curSec % 60;
-    unsigned long days = curSec / 86400;
-    int weekday = (days + 4) % 7;
+    // KHONG goi updateClock() o day (da goi trong DisplayManager::update() truoc do)
+    // Tranh goi trung lap, tiet kiem CPU ~30us/frame
 
-    if (now - lastTrendMs >= 2500) {
-      lastTrendMs = now;
-      for (int i = 0; i < 6; i++) trend[i] = trend[i + 1];
-      int nxt = 6 + (int)(sinf((float)now * 0.0015f) * 4.0f) + (random(0, 5));
-      trend[6] = constrain(nxt, 2, 18);
-    }
+    bool isNight = (clockHour >= 18 || clockHour < 6);
 
-    float rawT = temperatureRead();
-    if (rawT > 10.0f && rawT < 85.0f) {
-      tempC = tempC * 0.95f + (rawT - 11.0f) * 0.05f;
-    }
-
-    drawSun(11, 11);
-    drawCloud(22, 11);
-
-    oled.setTextSize(2);
-    oled.setTextColor(SSD1306_WHITE);
-    oled.setCursor(44, 2);
-    bool blink = (now / 500) & 1;
-    char tBuf[8];
-    snprintf(tBuf, sizeof(tBuf), "%02d%c%02d", h, blink ? ':' : ' ', m);
-    oled.print(tBuf);
-
-    oled.setTextSize(1);
-    oled.setCursor(106, 3);
-    oled.printf(":%02d", s);
-
-    static const char PROGMEM DAYS[] = "CN\0T2\0T3\0T4\0T5\0T6\0SAT";
+    // 1. HEADER (Thứ + Ngày/Tháng/Năm + Biểu tượng Ngày/Đêm)
+    static const char PROGMEM DAYS[] = "CN\0T2\0T3\0T4\0T5\0T6\0T7";
     char dayBuf[4];
-    strncpy_P(dayBuf, &DAYS[weekday * 3], 3);
+    strncpy_P(dayBuf, &DAYS[clockWday * 3], 3);
     dayBuf[3] = '\0';
-    oled.drawRoundRect(44, 19, 24, 9, 2, SSD1306_WHITE);
-    oled.setCursor(48, 20);
+
+    oled.drawRoundRect(2, 1, 20, 10, 2, SSD1306_WHITE);
+    oled.setTextSize(1);
+    oled.setTextColor(SSD1306_WHITE);
+    oled.setCursor(6, 2);
     oled.print(dayBuf);
 
-    int mday = 1 + (days % 30);
-    int mon  = 1 + ((days / 30) % 12);
-    oled.setCursor(72, 20);
-    oled.printf("%02d/%02d", mday, mon);
+    oled.setCursor(28, 2);
+    oled.printf("%02d/%02d/%04d", clockDay, clockMonth, clockYear);
 
-    oled.setCursor(106, 20);
-    oled.print(F("IDLE"));
+    if (!isNight) {
+      drawSun(116, 6);
+    } else {
+      drawMoon(118, 5);
+      drawStars(104, 3);
+    }
 
-    oled.drawLine(0, 30, SCREEN_W - 1, 30, SSD1306_WHITE);
+    // Đường kẻ phân cách Header
+    oled.drawFastHLine(0, 13, SCREEN_W, SSD1306_WHITE);
 
-    oled.setCursor(2, 33);
-    oled.print(F("TREND"));
-    drawBars(2, 62);
-    oled.drawLine(48, 32, 48, 62, SSD1306_WHITE);
+    // 2. PHẦN GIỮA: GIỜ SỐ TO SIZE 3 & GIÂY
+    oled.setTextSize(3);
+    oled.setCursor(12, 18);
+    bool blink = (millis() / 500) & 1;
+    oled.printf("%02d%c%02d", clockHour, blink ? ':' : ' ', clockMin);
 
-    drawDroplet(52, 34);
-    oled.setCursor(60, 34);
-    oled.printf("%d%%", 60);
+    // Giây ở góc trên
+    oled.setTextSize(1);
+    oled.setCursor(105, 19);
+    oled.printf(":%02d", clockSec);
 
-    drawThermometer(52, 45);
-    oled.setCursor(60, 45);
-    oled.printf("%.1fC", tempC);
+    // Badge trạng thái nhỏ gọn
+    oled.drawRoundRect(103, 31, 22, 11, 2, SSD1306_WHITE);
+    oled.setCursor(106, 33);
+    oled.print(isNight ? F("Zz") : F("OK"));
 
-    oled.setCursor(52, 55);
-    oled.print(ir.isActive ? F("IR: CO VAT") : F("IR: SAN SANG"));
+    // Đường kẻ phân cách Footer
+    oled.drawFastHLine(0, 46, SCREEN_W, SSD1306_WHITE);
+
+    // 3. FOOTER: NHIỆT KẾ & TRẠNG THÁI
+    // Đọc cảm biến nhiệt ESP32-S3 (trừ đi nhiệt độ tỏa ra từ CPU)
+    float rawT = temperatureRead();
+    if (rawT >= 20.0f && rawT <= 85.0f) {
+      float estimatedRoomT = rawT - 28.5f;
+      estimatedRoomT = constrain(estimatedRoomT, 22.0f, 38.0f);
+      tempC = tempC * 0.92f + estimatedRoomT * 0.08f;
+    }
+
+    drawThermometer(4, 50);
+    oled.setTextSize(1);
+    oled.setCursor(14, 52);
+    oled.printf("%.1f%cC", tempC, (char)247);
+
+    oled.setCursor(56, 52);
+    if (ir.isActive) {
+      oled.print(F("| VAT CAN"));
+    } else {
+      oled.print(isNight ? F("| BAN DEM") : F("| BAN NGAY"));
+    }
 
     oled.display();
   }
@@ -1049,7 +1294,7 @@ public:
       if (emotion.pendingConfused) roboEyes.anim_confused();
       emotion.hasPending = false;
     }
-    roboEyes.update();
+    roboEyes.drawEyes();
   }
 
   void drawVisual() {
@@ -1059,7 +1304,7 @@ public:
       roboEyes.setWidth(sz, sz);
       roboEyes.setHeight(sz, sz);
       roboEyes.setMood(HAPPY);
-      roboEyes.update();
+      roboEyes.drawEyes();
     } else if (viz == VIZ_WAVE_EYES) {
       oled.clearDisplay();
       oled.drawRoundRect(14, 14, 44, 36, 8, SSD1306_WHITE);
@@ -1113,8 +1358,7 @@ public:
 
   void update() {
     unsigned long now = millis();
-    if (now - lastFrame < 33) return;
-    unsigned long dt = now - lastFrame;
+    unsigned long dt = (lastFrame > 0) ? (now - lastFrame) : 33;
     lastFrame = now;
 
     frameCount++;
@@ -1123,6 +1367,9 @@ public:
       fps = (fps > 0) ? fps * 0.7f + (1000.0f / (float)dt) * 0.3f : (1000.0f / (float)dt);
       frameCount = 0; fpsTimer = now;
     }
+
+    // Cap nhat gio noi tai 1 LAN MOI FRAME (30Hz) - du cho dong ho hien thi muot
+    updateClock();
 
     if (mode == DISP_STREAM && (now - streamLastMs) > 2000) mode = DISP_CLOCK;
 
@@ -1160,6 +1407,8 @@ public:
 // SECTION P: AUTONOMY (placed BEFORE UsbLink so UsbLink JSON handler can call setMode)
 // =====================================================================================
 
+static volatile bool s_actionRunning = false;
+
 class Autonomy {
 public:
   AutoMode mode = AUTO_CURIOUS;
@@ -1196,18 +1445,19 @@ public:
       return;
     }
 
-    if (gesture.playing || mode == AUTO_SLEEP) return;
+    if (gesture.playing || mode == AUTO_SLEEP || s_actionRunning) return;
 
     if (millis() - lastAction >= interval) {
       lastAction = millis();
       interval = random(4000, 8000);
       switch (mode) {
         case AUTO_CURIOUS:
-          if (random(2)) head.setTarget(random(70, 110), random(80, 100), 80.0f);
+          if (random(2)) async_speech_act();
           else gesture.play(GES_TILT_CURIOUS);
           break;
         case AUTO_PLAYFUL:
-          gesture.play(GES_BOUNCE_HAPPY);
+          if (random(2)) async_random_act();
+          else gesture.play(GES_BOUNCE_HAPPY);
           break;
         case AUTO_CALM:
           head.setTarget(PAN_CENTER_DEG + random(-15, 16), TILT_CENTER_DEG + random(-3, 4), 50.0f);
@@ -1233,16 +1483,39 @@ public:
   uint8_t payload[1050];
   uint8_t xorSum = 0;
 
+  char asciiBuf[128];
+  uint8_t asciiLen = 0;
+
   void update() {
     while (Serial.available()) {
       uint8_t b = Serial.read();
+
+      if (state == S_SYNC1 && b != USB_SYNC_1) {
+        // Xu ly ASCII serial text (ACT=..., TIME=..., v.v.) qua USB CDC
+        if (b == '\n') {
+          asciiBuf[asciiLen] = '\0';
+          processSerialLine(String(asciiBuf));
+          asciiLen = 0;
+        } else if (b != '\r') {
+          if (asciiLen < sizeof(asciiBuf) - 1) {
+            asciiBuf[asciiLen++] = (char)b;
+          }
+        }
+        continue;
+      }
+
       switch (state) {
         case S_SYNC1:
           if (b == USB_SYNC_1) state = S_SYNC2;
           break;
         case S_SYNC2:
           if (b == USB_SYNC_2) { state = S_TYPE; xorSum = 0; }
-          else state = S_SYNC1;
+          else {
+            state = S_SYNC1;
+            if (b != USB_SYNC_1 && asciiLen < sizeof(asciiBuf) - 1) {
+              asciiBuf[asciiLen++] = (char)b;
+            }
+          }
           break;
         case S_TYPE:
           pktType = b; xorSum ^= b; state = S_LENH;
@@ -1329,6 +1602,18 @@ public:
           break;
       }
     }
+
+    if (doc["actions"].is<JsonArray>()) {
+      String combined = "";
+      JsonArray arr = doc["actions"].as<JsonArray>();
+      for (JsonVariant v : arr) {
+        if (combined.length() > 0) combined += ",";
+        combined += v.as<String>();
+      }
+      async_sequent_act(combined);
+    } else if (doc["act"].is<const char*>()) {
+      async_sequent_act(doc["act"].as<const char*>());
+    }
   }
 
   void handle() {
@@ -1355,6 +1640,329 @@ public:
     }
   }
 } usb;
+
+// =====================================================================================
+// SECTION P2: DESK-EMOJI ACT & SERVO SYSTEM (Ported from desk-emoji-v3)
+// =====================================================================================
+
+// ---- 1. Head Motion Functions ----
+void head_move(int x_offset, int y_offset, int servo_delay) {
+  // Pan (X): (+) sang phai, (-) sang trai. Clamp an toan [PAN_MIN_DEG, PAN_MAX_DEG] (40..140)
+  // Tilt (Y): (+) cui xuong, (-) ngua len. Clamp an toan [TILT_MIN_DEG, TILT_MAX_DEG] (65..115)
+  float toPan  = constrain(head.pan.target  + (float)x_offset, PAN_MIN_DEG,  PAN_MAX_DEG);
+  float toTilt = constrain(head.tilt.target + (float)y_offset, TILT_MIN_DEG, TILT_MAX_DEG);
+  
+  float spd = SERVO_MAX_SPEED_DPS;
+  if (servo_delay > 0) {
+    spd = constrain(1000.0f / (float)(servo_delay * 2), SERVO_MIN_SPEED_DPS, SERVO_MAX_SPEED_DPS);
+  }
+  
+  head.setTarget(toPan, toTilt, spd);
+  
+  unsigned long t0 = millis();
+  while (head.isMoving() && (millis() - t0 < 3000)) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+void head_center(int servo_delay) {
+  float spd = (servo_delay > 0) ? constrain(1000.0f / (float)(servo_delay * 2), SERVO_MIN_SPEED_DPS, SERVO_MAX_SPEED_DPS) : 120.0f;
+  head.setTarget(PAN_CENTER_DEG, TILT_CENTER_DEG, spd);
+  unsigned long t0 = millis();
+  while (head.isMoving() && (millis() - t0 < 3000)) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+void head_right(int offset) { head_move(offset, 0); }
+void head_left(int offset)  { head_move(-offset, 0); }
+void head_down(int offset)  { head_move(0, offset); }
+void head_up(int offset)    { head_move(0, -offset); }
+
+void head_nod(int servo_delay) {
+  for (int i = 0; i < 2; i++) {
+    head_move(0, 12, servo_delay);
+    vTaskDelay(pdMS_TO_TICKS(40));
+    head_move(0, -12, servo_delay);
+    vTaskDelay(pdMS_TO_TICKS(40));
+  }
+}
+
+void head_shake(int servo_delay) {
+  head_move(-15, 0, servo_delay);
+  vTaskDelay(pdMS_TO_TICKS(40));
+  head_move(30, 0, servo_delay);
+  vTaskDelay(pdMS_TO_TICKS(40));
+  head_move(-30, 0, servo_delay);
+  vTaskDelay(pdMS_TO_TICKS(40));
+  head_move(30, 0, servo_delay);
+  vTaskDelay(pdMS_TO_TICKS(40));
+  head_move(-15, 0, servo_delay);
+  vTaskDelay(pdMS_TO_TICKS(40));
+}
+
+void head_roll_left(int servo_delay) {
+  head_center(servo_delay);
+  head_down(10);
+  head_move(-15, -10, servo_delay);
+  head_move(15, -10, servo_delay);
+  head_move(15, 10, servo_delay);
+  head_move(-15, 10, servo_delay);
+  head_center(servo_delay);
+}
+
+void head_roll_right(int servo_delay) {
+  head_center(servo_delay);
+  head_down(10);
+  head_move(15, -10, servo_delay);
+  head_move(-15, -10, servo_delay);
+  head_move(-15, 10, servo_delay);
+  head_move(15, 10, servo_delay);
+  head_center(servo_delay);
+}
+
+// ---- 2. Eye Expression Functions ----
+void eye_blink() {
+  display.notifyPresence();
+  roboEyes.blink();
+}
+
+void eye_happy() {
+  display.notifyPresence();
+  roboEyes.setMood(HAPPY);
+  roboEyes.anim_laugh();
+}
+
+void eye_sad() {
+  display.notifyPresence();
+  roboEyes.setMood(TIRED);
+}
+
+void eye_anger() {
+  display.notifyPresence();
+  roboEyes.setMood(ANGRY);
+}
+
+void eye_surprise() {
+  display.notifyPresence();
+  roboEyes.setMood(DEFAULT);
+  roboEyes.anim_confused();
+}
+
+void eye_right() {
+  display.notifyPresence();
+  roboEyes.setPosition(E);
+}
+
+void eye_left() {
+  display.notifyPresence();
+  roboEyes.setPosition(W);
+}
+
+void eye_center() {
+  display.notifyPresence();
+  roboEyes.setPosition(DEFAULT);
+}
+
+// ---- 3. Action Parser & Dispatcher ----
+void executeCommand(String cmd) {
+  cmd.trim();
+  if (cmd.length() == 0) return;
+
+  if (cmd == "eye_blink") {
+    eye_blink();
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "eye_happy" || cmd == "happy") {
+    eye_happy();
+    vTaskDelay(pdMS_TO_TICKS(150));
+  } else if (cmd == "eye_sad" || cmd == "sad") {
+    eye_sad();
+    vTaskDelay(pdMS_TO_TICKS(150));
+  } else if (cmd == "eye_anger" || cmd == "eye_angry" || cmd == "angry") {
+    eye_anger();
+    vTaskDelay(pdMS_TO_TICKS(150));
+  } else if (cmd == "eye_surprise" || cmd == "surprise") {
+    eye_surprise();
+    vTaskDelay(pdMS_TO_TICKS(150));
+  } else if (cmd == "eye_right") {
+    eye_right();
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "eye_left") {
+    eye_left();
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "eye_center") {
+    eye_center();
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_left" || cmd == "left") {
+    head_left(20);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_right" || cmd == "right") {
+    head_right(20);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_up" || cmd == "up") {
+    head_up(15);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_down" || cmd == "down") {
+    head_down(15);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_center" || cmd == "center") {
+    head_center();
+    eye_center();
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_nod" || cmd == "nod") {
+    head_nod(3);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_shake" || cmd == "shake") {
+    head_shake(3);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_roll_left" || cmd == "roll_left") {
+    head_roll_left(10);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "head_roll_right" || cmd == "roll_right") {
+    head_roll_right(10);
+    vTaskDelay(pdMS_TO_TICKS(100));
+  } else if (cmd == "speech") {
+    speech_act();
+  } else if (cmd == "random") {
+    random_act();
+  } else if (cmd == "delay") {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  } else if (cmd == "disp_clock") {
+    display.mode = DISP_CLOCK;
+  } else if (cmd == "disp_eyes") {
+    display.mode = DISP_EYES;
+    roboEyes.setMood(DEFAULT);
+  } else if (cmd == "reboot" || cmd == "restart") {
+    ESP.restart();
+  } else {
+    LOG_PRINTF("[ACT] Unknown command: %s\n", cmd.c_str());
+    return;
+  }
+  LOG_PRINTF("[ACT] Done: %s\n", cmd.c_str());
+}
+
+void sequent_act(String actions) {
+  if (actions.isEmpty()) return;
+  int startIndex = 0;
+  int commaIndex;
+
+  while (startIndex < actions.length()) {
+    commaIndex = actions.indexOf(',', startIndex);
+    String cmd;
+    if (commaIndex != -1) {
+      cmd = actions.substring(startIndex, commaIndex);
+      startIndex = commaIndex + 1;
+    } else {
+      cmd = actions.substring(startIndex);
+      startIndex = actions.length();
+    }
+    cmd.trim();
+    if (cmd.length() > 0) {
+      executeCommand(cmd);
+    }
+  }
+}
+
+void random_act() {
+  int random_num = random(100);
+  int x = random(-20, 21);
+  int y = random(-8, 12);
+
+  if (random_num < 15) {
+    eye_happy();
+    vTaskDelay(pdMS_TO_TICKS(400));
+  } else if (random_num > 75) {
+    head_move(x, y, 10);
+    if (x > 0) eye_right(); else eye_left();
+    vTaskDelay(pdMS_TO_TICKS(350));
+    head_center();
+    eye_center();
+  } else {
+    eye_blink();
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+}
+
+void speech_act() {
+  int random_num = random(100);
+  int x = random(-20, 21);
+  int y = random(-8, 12);
+
+  if (random_num > 70) {
+    eye_happy();
+    if (random_num > 90) {
+      head_shake();
+    } else {
+      head_nod();
+    }
+    head_center();
+    eye_blink();
+  } else if (random_num > 40) {
+    head_move(x, y, 10);
+    if (x > 0) eye_right(); else eye_left();
+    vTaskDelay(pdMS_TO_TICKS(250));
+    head_center();
+    eye_center();
+  } else if (random_num > 20) {
+    eye_happy();
+    if (random_num > 10) {
+      head_roll_left();
+    } else {
+      head_roll_right();
+    }
+    head_center();
+    eye_blink();
+  } else {
+    eye_blink();
+  }
+}
+
+// ---- 4. FreeRTOS Async Tasks ----
+void async_sequent_act(String actions) {
+  if (s_actionRunning) {
+    LOG_PRINTLN(F("[ACT] Robot dang ban thuc hien hanh dong!"));
+    return;
+  }
+  xTaskCreate(
+    [](void* parameter) {
+      s_actionRunning = true;
+      String* actions = (String*)parameter;
+      sequent_act(*actions);
+      delete actions;
+      s_actionRunning = false;
+      vTaskDelete(NULL);
+    },
+    "SeqActTask", 4096, new String(actions), 2, NULL
+  );
+}
+
+void async_random_act() {
+  if (s_actionRunning) return;
+  xTaskCreate(
+    [](void* parameter) {
+      s_actionRunning = true;
+      randomSeed(esp_random());
+      random_act();
+      s_actionRunning = false;
+      vTaskDelete(NULL);
+    },
+    "RandActTask", 4096, NULL, 2, NULL
+  );
+}
+
+void async_speech_act() {
+  if (s_actionRunning) return;
+  xTaskCreate(
+    [](void* parameter) {
+      s_actionRunning = true;
+      randomSeed(esp_random());
+      speech_act();
+      s_actionRunning = false;
+      vTaskDelete(NULL);
+    },
+    "SpeechActTask", 4096, NULL, 2, NULL
+  );
+}
 
 // (Autonomy moved BEFORE UsbLink - see above)
 
@@ -1433,6 +2041,174 @@ void taskBrain(void*) {
 }
 
 // =====================================================================================
+// SECTION S: NTP TIME SYNC (WiFi + SNTP)
+// =====================================================================================
+// - Ket noi WiFi khi boot (neu co config) de dong bo gio tu NTP server
+// - Tu dong retry moi 30 phut neu that bai
+// - Co the bat/tat qua lenh Serial: NTP=ON, NTP=OFF, NTPSET=SSID,PASS
+// - KHONG bat WiFi mac dinh (tiet kiem dien) - chi bat khi NTP=ON
+// - Muc tieu: giu gio chinh xac ~vai giay, khong bi loi clock drift
+// =====================================================================================
+
+#include <WiFi.h>
+#include <esp_sntp.h>
+
+class NtpSync {
+public:
+  // Cai dat mac dinh (co the thay qua Preferences hoac lenh Serial NTPSET=)
+  const char* ssid     = "YOUR_WIFI_SSID";
+  const char* pass     = "YOUR_WIFI_PASS";
+  const char* ntp1     = "pool.ntp.org";     // Server NTP chinh
+  const char* ntp2     = "time.nist.gov";    // Server NTP phu
+  const long  gmtOffset_sec = 7 * 3600;       // UTC+7 (Indochina)
+  const int   daylightOffset_sec = 0;         // VN khong co DST
+
+  bool enabled = false;     // bat/tat NTP qua lenh Serial
+  bool synced = false;      // da sync thanh cong it nhat 1 lan
+  unsigned long lastSyncMs = 0;     // ms cua lan sync thanh cong
+  unsigned long lastAttemptMs = 0;  // ms cua lan thu connect
+  int8_t wifiState = -1;    // -1: chua bat, 0: dang bat/tat, 1: connected
+  uint8_t failCount = 0;
+
+  // Khoi dong: doc config tu Preferences (neu co), ket noi neu enabled
+  void begin() {
+    prefs.begin(NVS_NAMESPACE, true);
+    enabled = prefs.getBool("ntp_on", false);
+    String s = prefs.getString("ntp_ssid", "");
+    String p = prefs.getString("ntp_pass", "");
+    if (s.length() > 0) ssid = strdup(s.c_str());
+    if (p.length() > 0) pass = strdup(p.c_str());
+    prefs.end();
+    if (enabled) {
+      LOG_PRINTF("[NTP] Khoi dong che do NTP (SSID: %s)\n", ssid);
+      startConnect();
+    } else {
+      LOG_PRINTLN(F("[NTP] NTP tat mac dinh. Gui 'NTP=ON' de bat."));
+    }
+  }
+
+  // Voi cac command tu Serial
+  void setEnabled(bool en) {
+    if (en == enabled) return;
+    enabled = en;
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putBool("ntp_on", en);
+    prefs.end();
+    if (en) startConnect();
+    else stopWifi();
+    LOG_PRINTF("[NTP] NTP %s\n", en ? "BAT" : "TAT");
+  }
+
+  void setCredentials(const char* newSsid, const char* newPass) {
+    if (newSsid) ssid = strdup(newSsid);
+    if (newPass) pass = strdup(newPass);
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putString("ntp_ssid", newSsid ? newSsid : "");
+    prefs.putString("ntp_pass", newPass ? newPass : "");
+    prefs.end();
+    LOG_PRINTF("[NTP] Luu WiFi credentials: %s\n", ssid);
+    if (enabled) {
+      stopWifi();
+      startConnect();
+    }
+  }
+
+  // Vong lap (goi tu loop()): retry connect, retry sync
+  void update() {
+    if (!enabled) return;
+    unsigned long now = millis();
+    // Neu da sync roi, retry moi 30 phut
+    if (synced && (now - lastSyncMs) < 1800000UL) return;
+    // Neu chua den luot retry (tranh spam)
+    if (now - lastAttemptMs < 15000UL) return;
+    lastAttemptMs = now;
+
+    // Buoc 1: ket noi WiFi neu chua
+    if (WiFi.status() != WL_CONNECTED) {
+      if (wifiState != 1) {
+        startConnect();
+        return;
+      }
+      // Dang connect, cho 15s
+      if (now - lastAttemptMs < 15000UL) return;
+    }
+
+    // Buoc 2: SNTP sync (SNTP tu dong sync khi WiFi connected, kiem tra status)
+    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+      // Lay thoi gian moi nhat tu he thong
+      time_t now = time(nullptr);
+      if (now > 1735689600) {  // > 2025-01-01 -> valid
+        struct timeval tv = { .tv_sec = now, .tv_usec = 0 };
+        settimeofday(&tv, NULL);
+        lastSyncMs = millis();
+        synced = true;
+        failCount = 0;
+        display.updateClock();  // cap nhat ngay
+        LOG_PRINTF("[NTP] Sync thanh cong! Epoch=%lu\n", (unsigned long)now);
+        // NTP xong roi co the tat WiFi de tiet kiem dien
+        // (nhung giu connection de sync lai sau 30 phut)
+      }
+    } else if (sntp_get_sync_status() == SNTP_SYNC_STATUS_IN_PROGRESS) {
+      LOG_PRINTLN(F("[NTP] Sync dang tien hanh..."));
+    }
+  }
+
+  // Lay trang thai (cho Serial/USB debug)
+  void printStatus() {
+    LOG_PRINTF("[NTP] enabled=%d synced=%d wifiState=%d failCount=%d\n",
+               enabled, synced, wifiState, failCount);
+    if (synced) {
+      unsigned long agoMs = millis() - lastSyncMs;
+      LOG_PRINTF("[NTP] Last sync: %lu phut truoc\n", agoMs / 60000);
+    }
+  }
+
+private:
+  Preferences prefs;
+
+  void startConnect() {
+    LOG_PRINTF("[NTP] Dang ket noi WiFi: %s ...\n", ssid);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, pass);
+    wifiState = 0;  // dang bat
+    // Cho WiFi connected (khoa 5s de khong lam loop() bi treo)
+    unsigned long startMs = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 5000) {
+      delay(100);
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiState = 1;
+      LOG_PRINTF("[NTP] WiFi connected! IP: %s\n", WiFi.localIP().toString().c_str());
+      // Cau hinh SNTP
+      sntp_setoperatingmode(SNTP_OPMODE_POLL);
+      sntp_setservername(0, (char*)ntp1);
+      sntp_setservername(1, (char*)ntp2);
+      sntp_set_time_sync_notification_cb(nullptr);
+      sntp_init();
+      LOG_PRINTLN(F("[NTP] SNTP started, doi sync..."));
+    } else {
+      wifiState = -1;
+      failCount++;
+      LOG_PRINTF("[NTP] WiFi connect that bai (lan %d)\n", failCount);
+      if (failCount >= 3) {
+        LOG_PRINTLN(F("[NTP] 3 lan fail -> tam dung 5 phut"));
+        failCount = 0;
+        lastAttemptMs = millis() + 300000UL;  // delay 5 phut
+      }
+    }
+  }
+
+  void stopWifi() {
+    sntp_stop();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    wifiState = -1;
+    synced = false;
+    LOG_PRINTLN(F("[NTP] WiFi da tat"));
+  }
+} ntp;
+
+// =====================================================================================
 // SECTION R: SETUP & LOOP
 // =====================================================================================
 
@@ -1441,10 +2217,10 @@ void setup() {
   Serial.begin(115200);
   delay(300);
 
-  Serial0.println(F("\n====================================================="));
-  Serial0.println(F(" MIU EILIK ESP32-S3 - OPTIMIZED v6.3 (audit+fix) "));
-  Serial0.println(F(" PROGMEM | FNV-1a | Streaming I2S | 2-core RTOS     "));
-  Serial0.println(F("====================================================="));
+  LOG_PRINTLN(F("\n====================================================="));
+  LOG_PRINTLN(F(" MIU EILIK ESP32-S3 - OPTIMIZED v6.12 (OLED Fix)   "));
+  LOG_PRINTLN(F(" PROGMEM | FNV-1a | Streaming I2S | 2-core RTOS     "));
+  LOG_PRINTLN(F("====================================================="));
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -1456,6 +2232,8 @@ void setup() {
   audioR.begin();
   fileP.begin();
   ir.begin();
+  display.initClock();  // Khoi tao gia tri clock ban dau tu __DATE__/__TIME__
+  ntp.begin();          // Khoi tao NTP (chi connect WiFi neu ntp_on=true trong NVS)
 
   xTaskCreatePinnedToCore(taskAudio,   "Audio",   4096, NULL, 5, NULL, 0);
   xTaskCreatePinnedToCore(taskUsb,     "USB",     4096, NULL, 4, NULL, 0);
@@ -1463,18 +2241,127 @@ void setup() {
   xTaskCreatePinnedToCore(taskDisplay, "Display", 6144, NULL, 4, NULL, 1);
   xTaskCreatePinnedToCore(taskBrain,   "Brain",   4096, NULL, 3, NULL, 1);
 
-  Serial0.println(F("[OK] 5 tasks started on 2 cores"));
+  LOG_PRINTLN(F("[OK] 5 tasks started on 2 cores"));
 }
 
+void processSerialLine(String line) {
+  line.trim();
+  if (line.length() == 0) return;
+
+  if (line.startsWith("TIME=") || line.startsWith("TIME ")) {
+    int h = 0, m = 0, s = 0;
+    if (sscanf(line.c_str() + 5, "%d:%d:%d", &h, &m, &s) >= 2) {
+      display.setTime(h, m, s);
+      LOG_PRINTF("[OK] Da cap nhat gio: %02d:%02d:%02d\n", h, m, s);
+    }
+  } else if (line.startsWith("DATE=") || line.startsWith("DATE ")) {
+    int d = 0, mo = 0, y = 0;
+    if (sscanf(line.c_str() + 5, "%d/%d/%d", &d, &mo, &y) == 3) {
+      display.setDate(d, mo, y);
+      LOG_PRINTF("[OK] Da cap nhat ngay: %02d/%02d/%04d\n", d, mo, y);
+    }
+  } else if (line.startsWith("TEMP=") || line.startsWith("TEMP ")) {
+    float t = line.substring(5).toFloat();
+    if (t > 15.0f && t < 45.0f) {
+      display.tempC = t;
+      LOG_PRINTF("[OK] Da cai dat nhiet do phong: %.1fC\n", t);
+    }
+  } else if (line.startsWith("NTP=ON") || line.startsWith("NTP=1")) {
+    ntp.setEnabled(true);
+  } else if (line.startsWith("NTP=OFF") || line.startsWith("NTP=0")) {
+    ntp.setEnabled(false);
+  } else if (line.startsWith("NTP?")) {
+    ntp.printStatus();
+  } else if (line.startsWith("NTPSET=")) {
+    // NTPSET=MySSID,MyPassword
+    String creds = line.substring(7);
+    int commaIdx = creds.indexOf(',');
+    if (commaIdx > 0) {
+      String ssid = creds.substring(0, commaIdx);
+      String pass = creds.substring(commaIdx + 1);
+      ntp.setCredentials(ssid.c_str(), pass.c_str());
+    } else {
+      LOG_PRINTLN(F("[NTP] Sai format. Su dung: NTPSET=SSID,PASS"));
+    }
+  } else if (line.startsWith("ACT=") || line.startsWith("ACT ")) {
+    String actStr = line.substring(4);
+    actStr.trim();
+    LOG_PRINTF("[ACT] Nhan lenh hanh dong: %s\n", actStr.c_str());
+    async_sequent_act(actStr);
+  } else if (line.startsWith("{") && line.indexOf("\"actions\"") >= 0) {
+    // Ho tro format JSON cua desk-emoji: {"actions":["head_nod","eye_happy"]}
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, line);
+    if (!err && doc["actions"].is<JsonArray>()) {
+      String combined = "";
+      JsonArray arr = doc["actions"].as<JsonArray>();
+      for (JsonVariant v : arr) {
+        if (combined.length() > 0) combined += ",";
+        combined += v.as<String>();
+      }
+      LOG_PRINTF("[ACT JSON] %s\n", combined.c_str());
+      async_sequent_act(combined);
+    }
+  } else if (line.startsWith("adjust_x ") || line.startsWith("adjust_x=")) {
+    int val = line.substring(9).toInt();
+    head.pan.offset += val;
+    head.saveCalib((int8_t)head.pan.offset, (int8_t)head.tilt.offset);
+    LOG_PRINTF("[CALIB] Pan offset=%d, Tilt offset=%d\n", (int)head.pan.offset, (int)head.tilt.offset);
+  } else if (line.startsWith("adjust_y ") || line.startsWith("adjust_y=")) {
+    int val = line.substring(9).toInt();
+    head.tilt.offset += val;
+    head.saveCalib((int8_t)head.pan.offset, (int8_t)head.tilt.offset);
+    LOG_PRINTF("[CALIB] Pan offset=%d, Tilt offset=%d\n", (int)head.pan.offset, (int)head.tilt.offset);
+  } else if (line.startsWith("CALIB=")) {
+    int p = 0, t = 0;
+    if (sscanf(line.c_str() + 6, "%d,%d", &p, &t) == 2) {
+      head.saveCalib((int8_t)p, (int8_t)t);
+      LOG_PRINTF("[CALIB] Set Pan offset=%d, Tilt offset=%d\n", p, t);
+    }
+  } else if (line == "ACT?") {
+    LOG_PRINTLN(F("[ACT] Danh sach lenh san sang:"));
+    LOG_PRINTLN(F("  Motion: head_nod, head_shake, head_roll_left, head_roll_right"));
+    LOG_PRINTLN(F("          head_left, head_right, head_up, head_down, head_center"));
+    LOG_PRINTLN(F("  Eyes:   eye_happy, eye_sad, eye_anger, eye_surprise, eye_blink"));
+    LOG_PRINTLN(F("          eye_left, eye_right, eye_center"));
+    LOG_PRINTLN(F("  Macro:  speech, random, delay, disp_clock, disp_eyes, reboot"));
+    LOG_PRINTLN(F("  Chuoi:  ACT=head_nod,eye_happy,delay,head_roll_left"));
+  } else if (line.startsWith("head_") || line.startsWith("eye_") ||
+             line == "nod" || line == "shake" || line == "roll_left" ||
+             line == "roll_right" || line == "speech" || line == "random" ||
+             line == "happy" || line == "sad" || line == "center") {
+    LOG_PRINTF("[ACT DIRECT] %s\n", line.c_str());
+    async_sequent_act(line);
+  }
+}
+
+void checkSerialCommands() {
+  Stream* ports[] = { &Serial, &Serial0 };
+  for (Stream* p : ports) {
+    while (p->available()) {
+      String line = p->readStringUntil('\n');
+      processSerialLine(line);
+    }
+  }
+}
+
+
 unsigned long lastTelem = 0;
+unsigned long lastNtpUpdate = 0;
 
 void loop() {
+  checkSerialCommands();
   unsigned long now = millis();
+  // NTP update moi 15s (co check thong minh ben trong)
+  if (now - lastNtpUpdate >= 15000UL) {
+    lastNtpUpdate = now;
+    ntp.update();
+  }
   if (now - lastTelem >= 10000) {
     lastTelem = now;
-    Serial0.printf("[TELEM] up=%lus fps=%.0f heap=%u psram=%u und=%u pan=%.1f tilt=%.1f mode=%s\n",
+    LOG_PRINTF("[TELEM] up=%lus fps=%.0f heap=%u psram=%u und=%u pan=%.1f tilt=%.1f mode=%s\n",
       now / 1000, display.fps, ESP.getFreeHeap(), ESP.getFreePsram(),
       gUnderrunCount, head.pan.current, head.tilt.current, display.modeStr());
   }
-  delay(100);
+  delay(50);
 }

@@ -64,33 +64,42 @@ Firmware tối ưu cho **robot EILIK** chạy trên **ESP32-S3-WROOM-1 (N16R8)**
 - **esptool.py** (cài tự động qua PlatformIO)
 - **USB-C cable** (data, không phải charge-only)
 
-### 2. Build & Upload
+### 2. Cài đặt trên Arduino IDE (Khuyên dùng - Chuẩn mặc định)
+
+1. Mở phần mềm **Arduino IDE** (phiên bản 1.8.x hoặc 2.x).
+2. Chọn **File -> Open...** và mở file: `miu_eilik/miu_eilik.ino`.
+3. Cài đặt các thư viện cần thiết qua **Tools -> Manage Libraries...** (Library Manager):
+   - `Adafruit SSD1306` (chọn Install All dependencies nếu hỏi)
+   - `Adafruit GFX Library`
+   - `ArduinoJson` (khuyên dùng bản 6.x)
+   - `ESP32Servo`
+4. Cấu hình bo mạch trong menu **Tools**:
+   - **Board**: `ESP32S3 Dev Module`
+   - **USB CDC On Boot**: `Enabled` (để in log Serial qua cổng USB)
+   - **Flash Size**: `16MB (128Mb)`
+   - **Partition Scheme**: `16M Flash (3MB APP/9.9MB FATFS)` hoặc chọn file `partitions.csv` trong thư mục sketch
+   - **PSRAM**: `OPI PSRAM` (với chip N16R8) hoặc `Disabled` (với board không PSRAM)
+   - **Upload Speed**: `921600` (hoặc `115200` nếu cáp dài)
+   - **Port**: Chọn đúng cổng COM của ESP32-S3
+5. Bấm nút **Upload** (Mũi tên phải).
+6. Mở **Serial Monitor** (115200 baud) để xem chi tiết log khởi động và quét I2C OLED.
+
+---
+
+### 3. Cài đặt trên PlatformIO (VS Code)
 
 ```bash
-# Clone hoặc mở folder
+# Di chuyển vào thư mục dự án
 cd E:\MIU_EILIK_ESP32-S3
 
-# Build (compile + check)
-pio run
-
-# Upload firmware
-pio run -t upload
-
-# Mở Serial Monitor (115200 baud)
-pio device monitor
-
-# Hoặc gộp: build + upload + monitor
-pio run -t upload -t monitor
-```
-
-### 3. Chọn environment
-
-```bash
-# Mặc định: 16MB flash, 8MB PSRAM (ESP32-S3-WROOM-1 N16R8)
+# Biên dịch kiểm tra
 pio run -e eilik_s3
 
-# Board nhỏ (8MB flash, không PSRAM)
-pio run -e eilik_s3_nopsram
+# Nạp code vào ESP32-S3
+pio run -e eilik_s3 -t upload
+
+# Mở Serial Monitor xem log (115200 baud)
+pio device monitor -b 115200
 ```
 
 ---
@@ -300,11 +309,24 @@ static const GestureTrack PROGMEM GESTURE_TABLE[] = {
 - Check baud rate: **115200**
 - Check USB cable: phải là data cable, không phải charge-only
 
-### OLED không lên
+### OLED không lên hình / màn hình tối đen
 
-- Check I2C address: thử `0x3D` thay `0x3C` (một số module SSD1306 dùng khác)
-- Check wiring: SDA↔SCL, VCC=3.3V (không phải 5V)
-- Xem log: `Wire.setTimeOut()` sẽ in lỗi nếu timeout
+1. **Xem Serial Monitor (115200 baud):**
+   - Firmware v6.12 tích hợp sẵn I2C Bus Scanner tự động.
+   - Khi khởi động, Serial sẽ báo rõ:
+     `[I2C] Scanning I2C bus (SDA=8, SCL=9)`
+     - Nếu thấy `-> Phat hien thiet bi I2C tai: 0x3C (hoặc 0x3D)`: Phần cứng kết nối tốt!
+     - Nếu báo `!!! NO DEVICE FOUND`: Chắc chắn chưa tiếp xúc điện hoặc nhầm chân.
+2. **Kiểm tra dây nối (Wiring):**
+   - **GND** -> GND bo mạch ESP32-S3.
+   - **VCC / VDD** -> 3.3V (khuyên dùng) hoặc 5V (nếu module có sẵn IC ổn áp 662K).
+   - **SDA** -> **GPIO 8** (chú ý: trên header DevKitC-1, đếm đúng chân GPIO 8, không nhầm với chân số 8 vật lý).
+   - **SCL / SCK** -> **GPIO 9**.
+3. **Màn hình SSD1306 vs SH1106:**
+   - Màn hình 0.96 inch thông dụng dùng chip **SSD1306** (128x64).
+   - Một số màn hình 1.3 inch dùng chip **SH1106** (không hỗ trợ horizontal addressing). Nếu bạn dùng màn SH1106, cần cấu hình thư viện `Adafruit_SH110X` hoặc `U8g2`.
+4. **Kiểm tra độ dài dây & trở kéo:**
+   - Dây cáp Dupont dài > 20cm có thể làm suy hao tín hiệu I2C. Firmware đã tự động thử 400kHz rồi fallback xuống 100kHz để đảm bảo luôn tương thích.
 
 ### Servo giật
 
