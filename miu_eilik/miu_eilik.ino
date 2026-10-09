@@ -33,6 +33,11 @@
 // =====================================================================================
 
 // OLED
+// CẢNH BÁO: GPIO 8 và 9 dùng cho OLED I2C, nhưng ESP32-S3-WROOM-1-N16R8
+// dùng GPIO 8..17 cho OPI PSRAM. Nếu board_build.arduino.memory_type = qio_opi
+// thì PSRAM driver chiếm GPIO 8/9 -> Wire.begin(8,9) sẽ fail -> OLED đen.
+// Đã fix bằng cách đổi memory_type = qio_qspi trong platformio.ini (tắt PSRAM driver).
+// Nếu cần PSRAM thật, phải đổi OLED sang GPIO khác (1/2 hoặc 41/42 chẳng hạn)
 #define PIN_OLED_SDA            8
 #define PIN_OLED_SCL            9
 #define OLED_ADDR               0x3C
