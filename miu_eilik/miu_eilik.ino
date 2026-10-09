@@ -835,6 +835,25 @@ public:
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
     Wire.setClock(OLED_I2C_HZ);
     Wire.setTimeOut(OLED_I2C_TIMEOUT_MS);
+
+    // FIX: I2C scanner để debug wiring/address. In ra tất cả thiết bị tìm thấy
+    // trên bus I2C (0x03..0x77). Nếu không thấy gì -> dây lỏng, OLED hỏng, hoặc
+    // GPIO bị PSRAM/spi flash chiếm.
+    Serial0.printf("[I2C] scanning SDA=%d SCL=%d @ %d Hz...\n",
+                   PIN_OLED_SDA, PIN_OLED_SCL, OLED_I2C_HZ);
+    uint8_t foundCount = 0;
+    for (uint8_t addr = 0x03; addr < 0x78; addr++) {
+      Wire.beginTransmission(addr);
+      if (Wire.endTransmission() == 0) {
+        Serial0.printf("[I2C]   found device @ 0x%02X\n", addr);
+        foundCount++;
+      }
+    }
+    Serial0.printf("[I2C] scan done, %d device(s) found\n", foundCount);
+    if (foundCount == 0) {
+      Serial0.println(F("[I2C] !!! NO DEVICE FOUND - check wiring/PSRAM pin conflict"));
+    }
+
     // FIX: thêm log để xác nhận OLED đã init. Nếu fail, sẽ thấy ngay trên Serial.
     // - oled.begin() trả về false nếu không ACK được địa chỉ I2C (OLED hỏng,
     //   dây lỏng, địa chỉ sai, hoặc I2C clock quá cao).
@@ -848,6 +867,15 @@ public:
       return;
     }
     oled.clearDisplay(); oled.display();
+
+    // FIX: tự kiểm tra OLED ngay - nếu clear+display OK, thì I2C đã thông suốt
+    // và mắt sẽ hiện. Nếu vẫn đen -> có thể OLED hỏng đèn nền hoặc VCC không đủ.
+    Serial0.println(F("[OLED] test pattern (3s) - all pixels ON"));
+    for (uint8_t i = 0; i < 3; i++) {
+      oled.fillScreen(SSD1306_WHITE);
+      oled.display();
+      delay(1000);
+    }
 
     roboEyes.begin(SCREEN_W, SCREEN_H, 30);
     roboEyes.setAutoblinker(ON, 3, 2);
