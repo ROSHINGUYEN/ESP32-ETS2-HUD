@@ -53,7 +53,13 @@ struct Ets2TelemetryData {
   float rpm = 0.0f;
   float rpmMax = 2500.0f;
   int fuelPct = 100;          // 0..100%
+  int fuelLiters = 0;         // Lit (lượng dầu thực tế)
+  int fuelCapacity = 0;       // Lit (dung tích bình)
   bool fuelWarning = false;
+  int truckWearPct = 0;       // 0..100% (Độ hao mòn / hư hại xe tải)
+  int cargoWearPct = -1;      // 0..100% (Độ hao mòn / hư hại hàng hóa, -1: không có hàng)
+  bool trailerAttached = false; // Co keo ro-mooc hang
+  int odometerKm = 0;         // Tong quang duong xe da chay (km)
   bool blinkerL = false;
   bool blinkerR = false;
   bool lightsBeamLow = false;

@@ -17,7 +17,7 @@ public:
   uint8_t payload[1050];
   uint8_t xorSum = 0;
 
-  char asciiBuf[512];
+  char asciiBuf[768];
   uint16_t asciiLen = 0;
 
   void update();

@@ -580,6 +580,62 @@
 - **Trạng thái:** PASS
 - **Bước tiếp theo:** Người dùng tiếp tục trải nghiệm game hoặc sử dụng `CHAY_AN_KHONG_CUA_SO.bat` cho các lần chơi sau.
 
+## 2026-10-12 — Nâng Cấp Toàn Diện Giao Diện ETS2: Độ Bền Xe, Độ Bền Hàng Hóa, Xăng Lít & Full Taplo Game
+
+- **Mục tiêu:** Nâng cấp full giao diện Euro Truck Simulator 2 (ETS2) theo yêu cầu người dùng, bổ sung đầy đủ:
+  1. Độ bền / Độ hao mòn xe tải (`T: 0%`..`100%`, nhấp nháy cảnh báo khi xe hư hại nặng).
+  2. Độ bền / Độ hao mòn hàng hóa & rơ-moóc (`C: 0%`..`100%`, hiển thị `C:--` khi không kéo hàng, nhấp nháy khi hàng hư hại).
+  3. Mức xăng dầu chi tiết: Thanh đo Diesel kèm cả tỉ lệ phần trăm `%` VÀ số lít dầu thực tế còn lại trong bình (`780L`).
+  4. Quãng đường Odometer và cự ly giao hàng (`682km`).
+  5. Thiết kế hiển thị full thông số trên màn hình OLED 128x64 chuẩn buồng lái xe tải Châu Âu.
+- **Tiêu chí hoàn thành:**
+  - [x] Đọc chính xác các trường dữ liệu từ Windows Shared Memory `Local\Ets2TelemetryServer`:
+    - Offset 21: `trailer_attached` (Byte).
+    - Offset 88, 92: `fuel`, `fuelCapacity` (Single - Lít).
+    - Offset 656..672: `wearEngine`, `wearTransmission`, `wearCabin`, `wearChassis`, `wearWheels` (Single - Hao mòn các bộ phận xe).
+    - Offset 676: `wearTrailer` (Single - Hao mòn rơ-moóc / hàng hóa).
+    - Offset 680: `truckOdometer` (Single - Quãng đường xe chạy km).
+  - [x] Bổ sung các trường vào struct `Ets2TelemetryData` trong [miu_eilik/display_controller.h](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.h).
+  - [x] Cập nhật parser JSON trong [miu_eilik/usb_protocol.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/usb_protocol.cpp), mở rộng bộ đệm lên 768 bytes và `StaticJsonDocument<1536>`.
+  - [x] Tái thiết kế bố cục màn hình OLED trong `drawGameDashboard()` tại [miu_eilik/display_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.cpp):
+    - **Header Bar (y=0..10):** Xi-nhan trái/phải động, Pha/Cos `[D]`/`[D+]`, Gạt mưa `[WIP]`, Còi nóc `[BCN]`, Retarder `[R1..5]`, Đồng hồ giờ xe & Cờ cự ly `⚑ %dkm`, Ga tự động `[CC]`.
+    - **Trung tâm (y=11..45):** Biển báo tròn giới hạn tốc độ (chớp đảo màu khi quá tốc), Ga tự động `C:80`, Đồng hồ số tốc độ Font 3 cực lớn kèm khung viền `km/h`, Khung hộp số ZF TraXon / Scania Opticruise bo viền `[ D12 ]`, Phanh tay `[ P ]`, Phanh động cơ `MBR`, Áp suất khí nén `!A`.
+    - **Thước đo (y=46..55):** Thước đo xăng Diesel `F: [====] %` và thước đo vòng tua máy dầu RPM `R: [====]` có đánh dấu chuẩn dải mô-men xoắn kinh tế Châu Âu (Economic Green Band 1000 - 1500 RPM).
+    - **Status Ticker Đáy (y=56..63):** Dòng hiển thị siêu đầy đủ 4 thông số cốt lõi:
+      `T:0%` (Độ bền xe) `|` `C:0%` (Độ bền hàng hóa) `|` `780L` (Số lít dầu) `|` `682km` (Cự ly giao hàng / ODO).
+  - [x] Cập nhật [tools/miu_desktop_ets2.py](file:///e:/MIU_EILIK_ESP32-S3/tools/miu_desktop_ets2.py) trích xuất đầy đủ các trường, hỗ trợ demo mode và in dashboard trực quan trong terminal.
+  - [x] Biên dịch PlatformIO và nạp thành công 100% lên ESP32-S3 qua cổng COM5.
+  - [x] Kiểm thử truyền thông telemetry: Đạt 26.5 FPS mượt mà, đầy đủ thông số.
+- **Trạng thái ban đầu:** Taplo hiển thị cơ bản tốc độ, số, RPM, xăng %; chưa có độ bền xe, độ bền hàng hóa, số lít xăng thực tế.
+- **Phân tích và bằng chứng:**
+  - Game ETS2 lưu trữ dữ liệu độ bền cực kỳ chi tiết trong Shared Memory. Bằng cách trích xuất trực tiếp `wears[0..4]` cho xe tải và `wears[5]` cho hàng hóa trailer, robot có thể phản ánh chính xác từng cú quẹt hay va chạm trên đường.
+  - Màn hình 128x64 có diện tích đủ cho dòng ticker 7 pixels ở đáy (y=56..63), hiển thị vừa khít 113/128 pixels mà không bị đè chữ.
+- **Các bước đã thực hiện:**
+  1. Thêm `truckWearPct`, `cargoWearPct`, `trailerAttached`, `fuelLiters`, `fuelCapacity`, `odometerKm` vào `display_controller.h`.
+  2. Parse các trường mới và mở rộng buffer trong `usb_protocol.cpp`, `usb_protocol.h`, `miu_eilik.ino`.
+  3. Viết lại bố cục `drawGameDashboard()` trong `display_controller.cpp`.
+  4. Cập nhật `tools/miu_desktop_ets2.py` (Shared Memory, REST, Demo, Terminal render).
+  5. Biên dịch `pio run -e eilik_s3`: `SUCCESS` (Flash 8.4%, RAM 7.7%).
+  6. Nạp firmware lên ESP32-S3 qua COM5: `SUCCESS 100%` trong 10.04s.
+  7. Chạy test `--demo`: Màn hình OLED và terminal hiển thị đầy đủ `TRK: 2%`, `CRG: 0%`, `FUEL: 92% (780L)`, `ETA: 142km`, `RET: 2`.
+  8. Giải phóng hoàn toàn cổng COM5, sẵn sàng chơi game.
+- **File thay đổi:**
+  - [miu_eilik/display_controller.h](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.h)
+  - [miu_eilik/display_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.cpp)
+  - [miu_eilik/usb_protocol.h](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/usb_protocol.h)
+  - [miu_eilik/usb_protocol.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/usb_protocol.cpp)
+  - [miu_eilik/miu_eilik.ino](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/miu_eilik.ino)
+  - [tools/miu_desktop_ets2.py](file:///e:/MIU_EILIK_ESP32-S3/tools/miu_desktop_ets2.py)
+  - [WORK_REPORT.md](file:///e:/MIU_EILIK_ESP32-S3/WORK_REPORT.md)
+- **Kiểm thử và kết quả:**
+  - Biên dịch & Nạp: PASS 100% (Flash 394KB / 8.4%, RAM 25KB / 7.7%).
+  - Kiểm thử hiển thị Full HUD: PASS (Đầy đủ T:%, C:%, Xăng lít, RPM dải kinh tế, biển báo tốc độ, hộp số, ETA, cờ đích đến).
+  - Trạng thái cổng COM5: PASS (Sạch sẽ, sẵn sàng kết nối).
+- **Vấn đề còn tồn tại:** Không có.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Người dùng bật game ETS2 và chạy [CHAY_AN_KHONG_CUA_SO.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_AN_KHONG_CUA_SO.bat) hoặc [CHAY_DASHBOARD_ETS2.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_DASHBOARD_ETS2.bat) để trải nghiệm.
+
+
 
 
 

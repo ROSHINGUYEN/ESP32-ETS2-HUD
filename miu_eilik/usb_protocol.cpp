@@ -61,7 +61,7 @@ void UsbLink::update() {
 }
 
 void UsbLink::processJson(const char* json, size_t len) {
-  StaticJsonDocument<1024> doc;
+  StaticJsonDocument<1536> doc;
   DeserializationError err = deserializeJson(doc, json, len);
   if (err != DeserializationError::Ok) {
     LOG_PRINTF("[JSON ERR] %s (len=%u)\n", err.c_str(), (unsigned int)len);
@@ -81,7 +81,13 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.rpm = doc["rpm"] | 0.0f;
     t.rpmMax = doc["rpm_max"] | 2500.0f;
     t.fuelPct = doc["fuel"] | 100;
+    t.fuelLiters = doc["fuel_l"] | 0;
+    t.fuelCapacity = doc["fuel_cap"] | 0;
     t.fuelWarning = (doc["fuel_warn"].as<int>() != 0);
+    t.truckWearPct = doc.containsKey("trk_w") ? doc["trk_w"].as<int>() : (int)round(doc["wear"].as<float>() * 100.0f);
+    t.cargoWearPct = doc.containsKey("crg_w") ? doc["crg_w"].as<int>() : -1;
+    t.trailerAttached = (doc["trl_on"].as<int>() != 0);
+    t.odometerKm = doc["odo"] | 0;
     t.blinkerL = (doc["bl_l"].as<int>() != 0);
     t.blinkerR = (doc["bl_r"].as<int>() != 0);
     t.lightsBeamLow = (doc["low"].as<int>() != 0);

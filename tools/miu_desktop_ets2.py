@@ -147,14 +147,26 @@ class Ets2SharedMemoryReader:
             beacon = raw[604]
             air = raw[608]
             fuel_warn = struct.unpack_from("<i", raw, 624)[0]
+
+            trailer_on = 1 if raw[21] != 0 else 0
             wears = struct.unpack_from("<6f", raw, 656)
+            # wears[0..4]: engine, trans, cabin, chassis, wheels
+            truck_wear_pct = int(round(100.0 * (sum(wears[:5]) / 5.0)))
+            # wears[5]: wearTrailer
+            cargo_wear_pct = int(round(wears[5] * 100.0)) if trailer_on else -1
             total_wear = float(sum(wears))
+
+            odometer = struct.unpack_from("<f", raw, 680)[0]
+            odo_km = int(round(odometer)) if odometer > 0 else 0
+
+            fuel_l = int(round(fuel)) if fuel > 0 else 0
+            fuel_cap = int(round(fuelCap)) if fuelCap > 0 else 0
+            fuel_pct = int(round(100.0 * fuel / fuelCap)) if fuelCap > 0 else 50
+
             cc_spd = struct.unpack_from("<f", raw, 684)[0] * 3.6
             disp_gear = struct.unpack_from("<i", raw, 996)[0]
             nav_d = struct.unpack_from("<f", raw, 1000)[0] / 1000.0
             nav_lim = struct.unpack_from("<f", raw, 1008)[0] * 3.6
-
-            fuel_pct = int(round(100.0 * fuel / fuelCap)) if fuelCap > 0 else 50
             spd_kmh = max(0, int(round(speed_ms * 3.6)))
 
             return {
@@ -167,6 +179,8 @@ class Ets2SharedMemoryReader:
                 "rpm": int(round(rpm)),
                 "rpm_max": int(round(rpmMax if rpmMax > 500 else 2500)),
                 "fuel": fuel_pct,
+                "fuel_l": fuel_l,
+                "fuel_cap": fuel_cap,
                 "fuel_warn": 1 if (fuel_warn > 0 or fuel_pct < 15) else 0,
                 "bl_l": 1 if bl_l else 0,
                 "bl_r": 1 if bl_r else 0,
@@ -179,6 +193,10 @@ class Ets2SharedMemoryReader:
                 "bcn": 1 if beacon else 0,
                 "mbrk": 1 if mbrk else 0,
                 "wear": total_wear,
+                "trk_w": truck_wear_pct,
+                "crg_w": cargo_wear_pct,
+                "trl_on": trailer_on,
+                "odo": odo_km,
                 "eta_d": int(round(nav_d)) if nav_d > 0 else 0,
                 "gh": game_h,
                 "gm": game_m,
@@ -509,6 +527,8 @@ class Ets2DesktopCompanion:
             "rpm": int(round(self._sim_rpm)),
             "rpm_max": 2500,
             "fuel": int(round(self._sim_fuel)),
+            "fuel_l": int(round(self._sim_fuel * 8.5)),
+            "fuel_cap": 900,
             "fuel_warn": 1 if self._sim_fuel < 15.0 else 0,
             "bl_l": 1 if blinker_l else 0,
             "bl_r": 1 if blinker_r else 0,
@@ -520,6 +540,11 @@ class Ets2DesktopCompanion:
             "wip": wip_val,
             "bcn": 1 if (0.4 <= cycle < 0.6) else 0,
             "mbrk": 0,
+            "wear": 0.02,
+            "trk_w": 2 if cycle < 0.8 else 5,
+            "crg_w": 0,
+            "trl_on": 1,
+            "odo": int(round(12450 + self._sim_t * 0.1)),
             "eta_d": max(5, int(145 - self._sim_t * 0.5)),
             "eta_t": max(5, int(110 - self._sim_t * 0.4)),
             "gh": int(14 + (self._sim_t / 120.0)) % 24,
@@ -605,6 +630,24 @@ class Ets2DesktopCompanion:
         fuel = truck.get("fuel", 500.0)
         fuel_cap = truck.get("fuelCapacity", 700.0)
         fuel_pct = int(round(100.0 * fuel / fuel_cap)) if fuel_cap > 0 else 50
+        fuel_l = int(round(fuel)) if fuel > 0 else 0
+        fuel_cap_l = int(round(fuel_cap)) if fuel_cap > 0 else 0
+
+        # Trailer & Cargo damage
+        trailer = raw.get("trailer", {})
+        trailer_on = 1 if trailer.get("attached", False) else 0
+        cargo_wear_pct = int(round(trailer.get("wear", 0.0) * 100.0)) if trailer_on else -1
+
+        # Truck wear (average across 5 components)
+        truck_wear_avg = (
+            truck.get("wearEngine", 0.0) +
+            truck.get("wearTransmission", 0.0) +
+            truck.get("wearCabin", 0.0) +
+            truck.get("wearChassis", 0.0) +
+            truck.get("wearWheels", 0.0)
+        ) / 5.0
+        truck_wear_pct = int(round(truck_wear_avg * 100.0))
+        odo_km = int(round(truck.get("odometer", 0.0)))
 
         # Gear: displayedGear hoac gear
         gear = truck.get("displayedGear", truck.get("gear", 0))
@@ -636,6 +679,8 @@ class Ets2DesktopCompanion:
             "rpm": int(round(truck.get("engineRpm", 0.0))),
             "rpm_max": int(round(truck.get("engineRpmMax", 2500.0))),
             "fuel": fuel_pct,
+            "fuel_l": fuel_l,
+            "fuel_cap": fuel_cap_l,
             "fuel_warn": 1 if truck.get("fuelWarningOn", False) else 0,
             "bl_l": 1 if (truck.get("blinkerLeftActive", False) or truck.get("blinkerLeftOn", False)) else 0,
             "bl_r": 1 if (truck.get("blinkerRightActive", False) or truck.get("blinkerRightOn", False)) else 0,
@@ -648,6 +693,10 @@ class Ets2DesktopCompanion:
             "bcn": 1 if (truck.get("lightsBeaconOn", False) or truck.get("beaconOn", False)) else 0,
             "mbrk": 1 if truck.get("motorBrakeOn", False) else 0,
             "wear": float(truck.get("wearEngine", 0.0) + truck.get("wearTransmission", 0.0) + truck.get("wearCabin", 0.0)),
+            "trk_w": truck_wear_pct,
+            "crg_w": cargo_wear_pct,
+            "trl_on": trailer_on,
+            "odo": odo_km,
             "eta_d": eta_d,
             "gh": gh,
             "gm": gm,
@@ -767,9 +816,16 @@ class Ets2DesktopCompanion:
             bcn_str = "BCN" if p.get("bcn", 0) else "   "
             evt_str = f"| >> {p['evt']} <<" if p.get("evt") else ""
 
+            trkw = p.get("trk_w", 0)
+            crgw = f"{p.get('crg_w', 0)}%" if p.get("trl_on", 0) else "--"
+            fuel_l = p.get("fuel_l", 0)
+            fuel_str = f"{fuel}% ({fuel_l}L)" if fuel_l > 0 else f"{fuel}%"
+            eta_d = p.get("eta_d", 0)
+            eta_str = f"| ETA: {eta_d}km " if eta_d > 0 else ""
+
             try:
                 sys.stdout.write(
-                    f"\r| {bl_l} {gear_str:3s} {bl_r} | SPEED: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel:2d}% | {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
+                    f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | CRG: {crgw} {eta_str}| {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
                 )
                 sys.stdout.flush()
             except Exception:

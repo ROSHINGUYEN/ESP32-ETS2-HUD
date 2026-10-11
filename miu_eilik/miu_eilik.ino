@@ -158,7 +158,7 @@ void processSerialLine(String line) {
   }
 }
 
-static char s0Buf[512];
+static char s0Buf[768];
 static uint16_t s0Len = 0;
 
 static void checkSerialCommands() {
