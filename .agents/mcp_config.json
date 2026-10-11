@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "cmd.exe",
+      "args": [
+        "/c",
+        "e:\\Tiktok_chuoi\\scripts\\start-playwright-mcp.bat"
+      ]
+    }
+  }
+}

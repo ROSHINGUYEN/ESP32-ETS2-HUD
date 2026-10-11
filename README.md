@@ -29,19 +29,15 @@ Firmware tối ưu cho **robot EILIK** chạy trên **ESP32-S3-WROOM-1 (N16R8)**
 ├──────────────────────────────────────┤
 │  GPIO 8  ──►  OLED SDA              │
 │  GPIO 9  ──►  OLED SCL              │
-│  GPIO 4  ──►  Servo PAN             │
-│  GPIO 5  ──►  Servo TILT            │
-│  GPIO 6  ──►  IR Primary            │
-│  GPIO 7  ──►  IR Secondary          │
-│  GPIO 10 ──►  MUX SEL (BT/Internal)  │
+│  GPIO 12 ──►  Servo PAN (X - Quay ngang) │
+│  GPIO 13 ──►  Servo TILT (Y - Gật dọc)   │
+│  GPIO 6  ──►  IR Primary (Phải)     │
+│  GPIO 7  ──►  IR Secondary (Trái)   │
+│  GPIO 10 ──►  MUX SEL (Audio Mux)   │
 │  GPIO 15 ──►  I2S BCLK              │
 │  GPIO 16 ──►  I2S LRC               │
 │  GPIO 17 ──►  I2S DIN               │
-│  GPIO 18 ──►  I2S SD (amp enable)   │
-│  GPIO 11 ──►  BT BCLK IN            │
-│  GPIO 12 ──►  BT WS IN              │
-│  GPIO 13 ──►  BT DATA IN            │
-│  GPIO 14 ──►  BT STATUS             │
+│  GPIO 18 ──►  I2S SD (Amp enable)   │
 └──────────────────────────────────────┘
 ```
 
