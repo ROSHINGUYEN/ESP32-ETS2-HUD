@@ -6,6 +6,12 @@
         "/c",
         "e:\\Tiktok_chuoi\\scripts\\start-playwright-mcp.bat"
       ]
+    },
+    "esp32-eilik": {
+      "command": "C:\\Users\\Tinhd\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+      "args": [
+        "e:\\MIU_EILIK_ESP32-S3\\tools\\esp32_mcp_server.py"
+      ]
     }
   }
 }

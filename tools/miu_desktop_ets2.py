@@ -431,6 +431,53 @@ class Ets2DesktopCompanion:
                 print(f"[WARN] Mat ket noi Serial: {e}")
                 self.close_serial()
 
+    def check_mcp_commands(self):
+        """Kiem tra va chuyen tiep lenh tu cong MCP Server hoac client ngoai vi."""
+        cmd_file = os.path.join(os.path.dirname(__file__), "mcp_command.txt")
+        if os.path.exists(cmd_file):
+            try:
+                with open(cmd_file, "r", encoding="utf-8") as f:
+                    cmd = f.read().strip()
+                try:
+                    os.remove(cmd_file)
+                except Exception:
+                    pass
+                if cmd:
+                    self.send_command(cmd)
+                    print(f"\n[MCP] >> Da chuyen tiep lenh toi ESP32: {cmd} <<")
+            except Exception:
+                pass
+
+    def dump_state(self, payload: Optional[Dict[str, Any]] = None):
+        """Ghi trang thai telemetry va ket noi ra file json cho MCP Server va Dashboard doc."""
+        now = time.time()
+        if now - getattr(self, "_last_state_dump", 0.0) < 0.3:
+            return
+        self._last_state_dump = now
+        state_file = os.path.join(os.path.dirname(__file__), "telemetry_state.json")
+        try:
+            data = {
+                "daemon_running": True,
+                "pid": os.getpid(),
+                "port": self.port_name,
+                "baud": self.baud,
+                "serial_connected": bool(self.ser and self.ser.is_open),
+                "game": self.game,
+                "game_connected": bool(self.game_connected_prev),
+                "source": self.source_name,
+                "fps": round(self.current_fps, 1),
+                "packets_sent": self.packets_sent,
+                "active_event": self.active_event_text if now < self.event_expire_time else "",
+                "timestamp": now,
+                "telemetry": payload or {},
+            }
+            tmp_file = state_file + ".tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_file, state_file)
+        except Exception:
+            pass
+
     def fetch_server_telemetry(self) -> Optional[Dict[str, Any]]:
         """Lay telemetry tu game server qua HTTP REST (ETS2 port 25555 hoac FS25 port 8080/SimHub)."""
         try:
@@ -847,8 +894,10 @@ class Ets2DesktopCompanion:
         try:
             while self.running:
                 loop_start = time.time()
+                self.check_mcp_commands()
 
                 if not self.ensure_serial():
+                    self.dump_state(None)
                     source = "Windows Shared Memory" if self.game == "ets2" else f"Port 8080 ({self.server_url})"
                     sys.stdout.write(
                         f"\r[DANG DOI ROBOT] Dang doi ket noi robot ESP32 qua USB... | {source}   "
@@ -863,6 +912,7 @@ class Ets2DesktopCompanion:
                     else:
                         payload = self.generate_demo_telemetry()
                     self.send_telemetry_packet(payload)
+                    self.dump_state(payload)
                     self.render_console_dashboard(payload)
                 else:
                     payload = self.fetch_live_telemetry()
@@ -886,9 +936,11 @@ class Ets2DesktopCompanion:
                         if self.game == "ets2":
                             self.process_events(payload)
                         self.send_telemetry_packet(payload)
+                        self.dump_state(payload)
                         self.render_console_dashboard(payload)
                     else:
                         # Game chua bat hoac chua ket noi
+                        self.dump_state(None)
                         if self.game_connected_prev:
                             print(f"\n[GAME DISCONNECTED] Game da thoat -> Chuyen robot ve mat RoboEyes")
                             self.send_command("MODE=EYES")
@@ -913,6 +965,12 @@ class Ets2DesktopCompanion:
         finally:
             self.running = False
             self.close_serial()
+            try:
+                state_file = os.path.join(os.path.dirname(__file__), "telemetry_state.json")
+                with open(state_file, "w", encoding="utf-8") as f:
+                    json.dump({"daemon_running": False, "timestamp": time.time()}, f)
+            except Exception:
+                pass
 
 
 def main():

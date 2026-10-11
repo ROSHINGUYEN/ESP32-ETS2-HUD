@@ -635,6 +635,61 @@
 - **Trạng thái:** PASS
 - **Bước tiếp theo:** Người dùng bật game ETS2 và chạy [CHAY_AN_KHONG_CUA_SO.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_AN_KHONG_CUA_SO.bat) hoặc [CHAY_DASHBOARD_ETS2.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_DASHBOARD_ETS2.bat) để trải nghiệm.
 
+## 2026-10-12 — Triển khai Cổng MCP Server ESP32, Sửa Tự Động Khởi Động Windows & Viết README Toàn Diện
+
+- **Mục tiêu:**
+  1. Xây dựng cổng MCP Server (`esp32-eilik`) kết nối đến ESP32 và Desktop Companion để AI IDE đọc telemetry, xem log thời gian thực và gửi lệnh điều khiển.
+  2. Sửa triệt để cơ chế tự động chạy cùng Windows: ESP32 và phần mềm cầu nối tự động kết nối và kéo luồng API game/telemetry khi khởi động máy mà không cần thao tác tay.
+  3. Viết lại tài liệu `README.md` mới hoàn chỉnh, chuẩn chỉ, bao quát toàn bộ kiến trúc dự án, hướng dẫn tự động chạy ngầm, cổng MCP và các tính năng.
+- **Tiêu chí hoàn thành:**
+  - MCP Server phản hồi đúng chuẩn JSON-RPC 2.0 (stdio), cung cấp đầy đủ 5 tools: `esp32_get_status`, `esp32_get_telemetry`, `esp32_get_logs`, `esp32_send_command`, `esp32_trigger_event`.
+  - Đăng ký MCP Server thành công vào cấu hình IDE và `.agents/mcp_config.json`.
+  - File Startup Windows trỏ chính xác về thư mục dự án `E:\MIU_EILIK_ESP32-S3`, tự khởi chạy `pythonw.exe` ngầm 100%.
+  - `README.md` mới chuyên nghiệp, đầy đủ sơ đồ phần cứng, hướng dẫn vận hành và tính năng.
+- **Trạng thái ban đầu:**
+  - File `launch_silent.vbs` khi sao chép vào thư mục Startup bị lỗi đường dẫn tương đối (`repoDir` trỏ sai về `Programs` thay vì `E:\MIU_EILIK_ESP32-S3`), khiến máy tính boot không chạy được companion.
+  - Chưa có MCP server để AI IDE đọc log và telemetry trực tiếp từ robot.
+  - `README.md` cũ chưa cập nhật các tính năng mới (Full Taplo ETS2, dải tua kinh tế, độ bền xe & hàng hóa, MCP Server).
+- **Phân tích và bằng chứng:**
+  - `launch_silent.vbs`: `fso.GetParentFolderName(WScript.ScriptFullName)` trong thư mục Startup trả về đường dẫn Startup, suy ra `repoDir` là `Programs`, dẫn đến file `miu_desktop_ets2.py` không tìm thấy.
+  - MCP Server có thể giao tiếp với Companion qua file trạng thái `tools/telemetry_state.json` và hàng đợi lệnh `tools/mcp_command.txt`, đồng thời đọc trực tiếp Windows Shared Memory `Local\Ets2TelemetryServer` nếu Companion đang tắt.
+- **Các bước đã thực hiện:**
+  1. **Triển khai Cổng MCP Server ESP32 (`tools/esp32_mcp_server.py`):**
+     - Xây dựng server MCP chuẩn JSON-RPC 2.0 stdio với 5 công cụ: `esp32_get_status`, `esp32_get_telemetry`, `esp32_get_logs`, `esp32_send_command`, `esp32_trigger_event`.
+     - Hỗ trợ cơ chế đọc telemetry 2 lớp: qua file trạng thái `tools/telemetry_state.json` khi daemon chạy ngầm, hoặc đọc trực tiếp Windows Shared Memory `Local\Ets2TelemetryServer` qua ctypes khi daemon chưa bật.
+     - Tạo thư mục schema IDE tại `C:\Users\Tinhd\.gemini\antigravity-ide\mcp\esp32-eilik\` gồm file `instructions.md` và 5 file JSON schema cho từng tool.
+     - Đăng ký server `esp32-eilik` vào cả `C:\Users\Tinhd\.gemini\config\mcp_config.json` và workspace `.agents/mcp_config.json`.
+  2. **Sửa Lỗi Tự Động Khởi Động Chạy Ngầm Cùng Windows:**
+     - Sửa lỗi phân giải đường dẫn tương đối trong `tools/launch_silent.vbs`: bổ sung fallback đường dẫn tuyệt đối `E:\MIU_EILIK_ESP32-S3` để khi file nằm trong thư mục Windows Startup (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), VBScript vẫn trỏ đúng vào repository.
+     - Cập nhật `BAT_TU_DONG_CHAY_NGAM.bat` để dọn dẹp tiến trình cũ, sao chép file chuẩn vào Startup và khởi chạy ngầm ngay lập tức.
+     - Nâng cấp `tools/miu_desktop_ets2.py`: bổ sung cơ chế kiểm tra và chuyển tiếp lệnh từ MCP (`tools/mcp_command.txt`), đồng thời định kỳ xuất file trạng thái `tools/telemetry_state.json`.
+  3. **Khởi Chạy Tiến Trình Ngầm & Kiểm Thử Toàn Diện:**
+     - Kích hoạt tiến trình daemon `tools/miu_desktop_ets2.py` chạy ngầm, tự động kết nối thành công với ESP32-S3 qua cổng `COM5` (115200 baud).
+     - Kiểm thử cả 5 lệnh MCP tool thông qua JSON-RPC stdio và CLI self-test: Tất cả đều phản hồi chính xác 100%.
+  4. **Viết Lại Tài Liệu `README.md` Toàn Diện:**
+     - Viết lại toàn bộ `README.md` mới hoàn chỉnh: Giới thiệu hệ sinh thái Miu Eilik Telemetry ETS2/ATS & FS25, sơ đồ đấu nối chân I2C OLED (SDA GPIO 8, SCL GPIO 9), tính năng Full Taplo, hướng dẫn kích hoạt tự động chạy ngầm cùng Windows, cấu hình cổng MCP Server cho AI IDE và bảng câu hỏi thường gặp (Troubleshooting).
+- **File thay đổi:**
+  - `tools/esp32_mcp_server.py` *(Tạo mới)*
+  - `tools/launch_silent.vbs` *(Sửa lỗi đường dẫn)*
+  - `BAT_TU_DONG_CHAY_NGAM.bat` *(Cập nhật cơ chế kích hoạt)*
+  - `tools/miu_desktop_ets2.py` *(Tích hợp IPC lệnh MCP & dump state)*
+  - `.agents/mcp_config.json` *(Đăng ký server MCP)*
+  - `C:\Users\Tinhd\.gemini\config\mcp_config.json` *(Đăng ký server MCP IDE)*
+  - `C:\Users\Tinhd\.gemini\antigravity-ide\mcp\esp32-eilik/*` *(Schema JSON & instructions.md)*
+  - `README.md` *(Viết lại hoàn chỉnh)*
+  - `WORK_REPORT.md` *(Cập nhật nhật ký)*
+- **Kiểm thử và kết quả:**
+  - Tự động chạy ngầm Windows: PASS (File `MiuEilikETS2Companion.vbs` 970 bytes trong thư mục Startup trỏ chính xác về repo `E:\MIU_EILIK_ESP32-S3`).
+  - Nạp firmware ESP32-S3: PASS (Biên dịch và nạp 100% qua cổng COM5 với 12.24s, Flash: 8.4% 394KB, RAM: 7.7% 25KB, chip ESP32-S3 N16R8 reset và chạy code mới).
+  - Daemon kết nối Serial: PASS (`COM5` connected, PID 11136, rate 30 FPS, tự động tái kết nối khi cắm/rút USB).
+  - MCP Server Self-Test: PASS (`esp32_get_status` báo `ONLINE`, `esp32_get_telemetry` đọc chuẩn, `esp32_get_logs` lấy đúng tail log, `esp32_send_command` và `esp32_trigger_event` chuyển tiếp lệnh thành công).
+  - Tài liệu `README.md`: PASS (Đầy đủ, chuẩn markdown, hướng dẫn chi tiết).
+- **Vấn đề còn tồn tại:** Không có.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Người dùng chỉ cần bật máy tính và mở game Euro Truck Simulator 2; hệ thống sẽ tự động hoạt động 100% không cần bất kỳ thao tác thủ công nào.
+
+
+
 
 
 

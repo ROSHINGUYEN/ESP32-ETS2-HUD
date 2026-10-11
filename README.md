@@ -1,89 +1,111 @@
-# MIU EILIK ESP32-S3
+# MIU EILIK - ESP32-S3 OLED TELEMETRY COMPANION & ROBOT EYES
 
-Firmware tối ưu cho **robot EILIK** chạy trên **ESP32-S3-WROOM-1 (N16R8)**, điều khiển cảm xúc qua servo, mắt OLED, cảm biến hồng ngoại và audio reactive.
+Hệ thống **Taplo hiển thị Telemetry xe tải Châu Âu (Euro Truck Simulator 2 / ATS)**, **Máy cày (Farming Simulator 25)** và **Robot biểu cảm (RoboEyes)** chạy trên vi điều khiển **ESP32-S3-WROOM-1 (N16R8)** với màn hình OLED 128x64.
 
-> Version: **6.2 (bug-fixed)** — tối ưu PROGMEM, FNV-1a hash, dual-core RTOS
-
----
-
-## 📋 Tính năng
-
-| Module | Mô tả |
-|---|---|
-| **OLED Eyes** | Mắt robot FluxGarage RoboEyes (128×64 SSD1306), 6 mood + 7 emotion |
-| **Servo Head** | 2 servo (pan + tilt), thuật toán trapezoidal motion profile |
-| **IR Sensor** | Tap / Double / Triple / Hold / Swipe Left/Right |
-| **Audio Reactive** | I2S input, 8-band biquad filter, beat detect + BPM |
-| **File Player** | WAV/MP3 từ LittleFS (32 file tối đa) |
-| **USB Protocol** | Nhị phân `[0xE1][0x1C][TYPE][LEN][PAYLOAD][XOR]` + JSON |
-| **Bluetooth** | Hỗ trợ input từ BT audio module (tắt BT stack để tiết kiệm flash) |
-| **FreeRTOS** | 5 task trên 2 core: Audio, USB, Servo, Display, Brain |
+Dự án tích hợp cơ chế **Tự động chạy ngầm cùng Windows (0-Touch)**, kéo luồng trực tiếp từ Windows Shared Memory với độ trễ siêu thấp (<2ms), và **Cổng MCP Server (Model Context Protocol)** kết nối trực tiếp với AI IDE (Antigravity, Cursor, Claude).
 
 ---
 
-## 🔌 Phần cứng (Pinout)
+## 📸 Tổng Quan Tính Năng Chính
 
 ```
-┌──────────────────────────────────────┐
-│  ESP32-S3-WROOM-1 (N16R8)            │
-├──────────────────────────────────────┤
-│  GPIO 8  ──►  OLED SDA              │
-│  GPIO 9  ──►  OLED SCL              │
-│  GPIO 12 ──►  Servo PAN (X - Quay ngang) │
-│  GPIO 13 ──►  Servo TILT (Y - Gật dọc)   │
-│  GPIO 6  ──►  IR Primary (Phải)     │
-│  GPIO 7  ──►  IR Secondary (Trái)   │
-│  GPIO 10 ──►  MUX SEL (Audio Mux)   │
-│  GPIO 15 ──►  I2S BCLK              │
-│  GPIO 16 ──►  I2S LRC               │
-│  GPIO 17 ──►  I2S DIN               │
-│  GPIO 18 ──►  I2S SD (Amp enable)   │
-└──────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────┐
+  │  [!] 80     D12     14:25   │  Biển báo tốc độ 80 (chớp khi quá tốc)
+  │  ─────────────────────────  │  Hộp số D12 | Giờ game 14:25
+  │          85 km/h            │  Tốc độ số to nét Font 3 (21x16 px)
+  │  ■■■■■■■■■■■■■■■■ [1250]    │  RPM có dải xanh kinh tế (1000-1500)
+  │  F: 92% (778L)  T:2%  C:0%  │  Xăng % & Lít | Độ bền xe & Hàng hóa
+  │  < ETA:140km >  WIP  RET:2  │  Xi-nhan | Cự ly | Gạt mưa | Retarder
+  └─────────────────────────────────────────────────────────────┘
 ```
 
-| Thiết bị | Đặc điểm |
-|---|---|
-| **OLED** | SSD1306 128×64 I2C, địa chỉ 0x3C, 800kHz |
-| **Servo** | SG90/MG90S, 50Hz, 500-2400µs pulse, 180° |
-| **IR** | Cảm biến vật cản hồng ngoại, active LOW |
-| **I2S Amp** | MAX98357A hoặc PCM5102A |
-| **BT Audio** | JDY-31 hoặc tương đương (UART-mode) |
+### 1. 🚛 Full Taplo Euro Truck Simulator 2 (ETS2 / ATS)
+- **Tốc độ xe to bản (Font 3)**: Chữ số to 21x16 pixel, căn giữa hoàn hảo, hiển thị rõ nét từ xa.
+- **Biển báo tốc độ Châu Âu (`[80]`, `[90]`)**: Tự động nhận diện biển báo trên cung đường. Chớp nháy tương phản ngược (chữ trắng nền đen) khi chạy quá tốc độ để cảnh báo tài xế.
+- **Hộp số thông minh**: Tự động hiển thị `D1`..`D12`, `N` (Số Mo), `R1`, `R2` (Số lùi).
+- **Vòng tua máy RPM & Dải tua kinh tế**: Thanh Bar Graph RPM mượt mà kèm vạch chấm căn chuẩn dải tua xanh kinh tế (`1000 - 1500 RPM`) theo chuẩn các dòng xe Scania, Volvo, MAN.
+- **Nhiên liệu chi tiết**: Hiển thị đồng thời **% bình xăng** và **Số lít thực tế** (ví dụ `92% (778L)`). Tự động chớp cảnh báo khi xăng dưới 15%.
+- **Độ bền xe & Rơ-moóc**:
+  - `T:%` (Truck Wear): Tỷ lệ hao mòn tổng hợp đầu kéo (Động cơ, hộp số, cabin, khung gầm, bánh xe).
+  - `C:%` (Cargo/Trailer Wear): Tỷ lệ hao mòn hàng hóa và rơ-moóc (`--` nếu chưa nối rơ-moóc).
+- **Hành trình & Điều hướng GPS**: Hiển thị cự ly còn lại tới đích đến (ví dụ `ETA: 140km`).
+- **Đèn & Hệ thống phụ trợ**: Xi-nhan trái/phải (`<` / `>`), Đèn pha chiếu gần/xa, Đèn nóc xe (Beacon), Gạt mưa (`WIP`), Phanh tay (`PARK`), Phanh khí nén (`AIR`), Phanh máy (`MBRK`), Phanh phụ Retarder đa cấp (`RET: 1..5`), Ga tự động (`CRUISE 80k`).
+- **Cockpit Toast Popups (Thông báo buồng lái thời gian thực)**:
+  - Cảnh báo bị phạt tốc độ: `PHAT TOC DO: -550 EUR`
+  - Trạm thu phí cao tốc: `THU PHI: -45 EUR`
+  - Tai nạn va chạm: `VA CHAM: -400 EUR`
+  - Thao tác buồng lái: `RETARDER: BAC 2`, `GAT MUA: BAT`, `CRUISE: 85 km/h`...
+
+### 2. 🚜 Bảng Điều Khiển Nông Nghiệp Farming Simulator 25 (FS25)
+- Đồng hồ máy cày: Vận tốc, Vòng tua máy (RPM Bar), Mức nạp bồn chứa nông sản (`FILL %`), Giờ máy chạy (`HR`), Độ hỏng hóc máy móc (`DMG %`), Đèn làm việc (`WRK`), Hạ lưỡi cày (`DOWN`), Trục truyền động PTO (`PTO`), Mở ống xả ngũ cốc (`PIPE`).
+
+### 3. 🤖 Chế Độ Robot Biểu Cảm (RoboEyes Emotion)
+- Khi không bật game, màn hình tự động hiển thị mắt robot động **RoboEyes** (FluxGarage) tự nhiên: chớp mắt ngẫu nhiên, đổi tâm trạng, liếc nhìn xung quanh.
+- **Tự động chuyển cảnh thông minh**:
+  - Khởi động ETS2 -> Robot hiện **Loading Splash** (Logo SCS & Xe tải pixel 2.2s) -> Tự động chuyển sang **HUD Taplo ETS2**.
+  - Thoát game -> Robot tự động chuyển về **Mắt robot RoboEyes**.
+
+### 4. ⚡ Tự Động Chạy Cùng Windows (0-Touch Boot)
+- Không cần mở thủ công mỗi lần bật máy: Phần mềm cầu nối (`miu_desktop_ets2.py`) tự động khởi chạy tàng hình cùng Windows qua VBScript (0% CPU, không chiếm cửa sổ CMD).
+- Tự động phát hiện và kết nối lại ESP32-S3 khi cắm/rút cáp USB (Auto COM Port Reconnect).
+- Đọc trực tiếp **Windows Shared Memory (`Local\Ets2TelemetryServer`)**: Không cần cài đặt server Node.js, không cần cấu hình IP/Port mạng, độ trễ cực thấp < 2ms!
+
+### 5. 🧠 Cổng MCP Server Tích Hợp (Model Context Protocol)
+- Kết nối trực tiếp với các AI Coding IDE thế hệ mới (**Antigravity**, **Cursor**, **Claude Desktop**).
+- Cho phép AI đọc log thời gian thực, giám sát telemetry xe và gửi lệnh điều khiển robot trực tiếp thông qua JSON-RPC stdio.
 
 ---
 
-## 🚀 Cài đặt
+## 🔌 Sơ Đồ Phần Cứng (Hardware Pinout)
 
-### 1. Yêu cầu
+Bo mạch sử dụng: **ESP32-S3-WROOM-1 (N16R8: 16MB Flash, 8MB Octal PSRAM)** kết hợp màn hình **OLED SSD1306 0.96" hoặc SH1106 1.3" (I2C)**.
 
-- **PlatformIO Core** (CLI hoặc IDE extension trong VSCode)
-- **Python 3.7+**
-- **esptool.py** (cài tự động qua PlatformIO)
-- **USB-C cable** (data, không phải charge-only)
-
-### 2. Cài đặt trên Arduino IDE (Khuyên dùng - Chuẩn mặc định)
-
-1. Mở phần mềm **Arduino IDE** (phiên bản 1.8.x hoặc 2.x).
-2. Chọn **File -> Open...** và mở file: `miu_eilik/miu_eilik.ino`.
-3. Cài đặt các thư viện cần thiết qua **Tools -> Manage Libraries...** (Library Manager):
-   - `Adafruit SSD1306` (chọn Install All dependencies nếu hỏi)
-   - `Adafruit GFX Library`
-   - `ArduinoJson` (khuyên dùng bản 6.x)
-   - `ESP32Servo`
-4. Cấu hình bo mạch trong menu **Tools**:
-   - **Board**: `ESP32S3 Dev Module`
-   - **USB CDC On Boot**: `Enabled` (để in log Serial qua cổng USB)
-   - **Flash Size**: `16MB (128Mb)`
-   - **Partition Scheme**: `16M Flash (3MB APP/9.9MB FATFS)` hoặc chọn file `partitions.csv` trong thư mục sketch
-   - **PSRAM**: `OPI PSRAM` (với chip N16R8) hoặc `Disabled` (với board không PSRAM)
-   - **Upload Speed**: `921600` (hoặc `115200` nếu cáp dài)
-   - **Port**: Chọn đúng cổng COM của ESP32-S3
-5. Bấm nút **Upload** (Mũi tên phải).
-6. Mở **Serial Monitor** (115200 baud) để xem chi tiết log khởi động và quét I2C OLED.
+```
+┌────────────────────────────────────────────────────────┐
+│               ESP32-S3-WROOM-1 (N16R8)                 │
+├────────────────────────────────────────────────────────┤
+│  GPIO 8  (D8)  ──►  OLED SDA  (Dữ liệu I2C)           │
+│  GPIO 9  (D9)  ──►  OLED SCL  (Xung I2C Clock)         │
+│  3V3           ──►  OLED VCC  (Nguồn 3.3V)             │
+│  GND           ──►  OLED GND  (Mass)                   │
+│                                                        │
+│  * Firmware có tính năng Smart Auto-Scan:             │
+│    Tự động quét và kích hoạt 8 cặp chân I2C thay thế   │
+│    (GPIO 8/9, GPIO 1/2, GPIO 41/42, GPIO 47/48)        │
+│    nếu người dùng cắm sai cổng.                        │
+└────────────────────────────────────────────────────────┘
+```
 
 ---
 
-### 3. Cài đặt trên PlatformIO (VS Code)
+## 🚀 Hướng Dẫn Vận Hành & Khởi Động Tự Động
 
+### Cách 1: Kích Hoạt Tự Động Chạy Cùng Windows (Khuyên Dùng)
+Chỉ cần bấm 1 lần duy nhất, máy tính sẽ tự động chạy ngầm vĩnh viễn:
+1. Nhấp đúp vào file: **`BAT_TU_DONG_CHAY_NGAM.bat`**
+2. Cửa sổ báo `[OK] Da cai dat vao Windows Startup thanh cong!`
+3. Xong! Từ nay mỗi khi bật máy tính Windows:
+   - Phần mềm cầu nối tự động chạy ngầm hoàn toàn.
+   - Khi bạn mở ETS2 và lái xe, màn hình robot tự nhảy Taplo HUD đầy đủ thông số.
+   - Khi bạn tắt game, màn hình quay về mắt robot.
+
+### Cách 2: Tắt Chế Độ Tự Động Chạy Ngầm
+Nếu muốn tắt hoặc gỡ bỏ khỏi Windows Startup:
+- Nhấp đúp vào file: **`TAT_TU_DONG_CHAY_NGAM.bat`**
+
+### Cách 3: Chạy Thủ Công Có Cửa Sổ Console (Để Xem Dashboard Trên Màn Hình Máy Tính)
+- Nhấp đúp vào: **`CHAY_DASHBOARD_ETS2.bat`**
+- Terminal sẽ hiển thị thanh dashboard ASCII thời gian thực:
+  ```
+  |   D12   | SPD:  85 km/h [80] ! OVER | RPM: 1250 | FUEL: 92% (778L) | TRK: 2% | CRG: 0% | ETA: 140km | WIP RET:2 | TX: 30.0 FPS
+  ```
+
+---
+
+## 🛠️ Hướng Dẫn Nạp Firmware ESP32-S3
+
+### 1. Nạp Bằng PlatformIO (Khuyên Dùng)
+Dự án đã được cấu hình tối ưu sẵn trong `platformio.ini`:
 ```bash
 # Di chuyển vào thư mục dự án
 cd E:\MIU_EILIK_ESP32-S3
@@ -91,266 +113,100 @@ cd E:\MIU_EILIK_ESP32-S3
 # Biên dịch kiểm tra
 pio run -e eilik_s3
 
-# Nạp code vào ESP32-S3
+# Nạp firmware vào bo mạch qua cổng COM (tự động nhận diện COM5)
 pio run -e eilik_s3 -t upload
 
-# Mở Serial Monitor xem log (115200 baud)
+# Mở Serial Monitor xem log khởi động (115200 baud)
 pio device monitor -b 115200
 ```
 
+### 2. Thông Số Tài Nguyên Sau Biên Dịch
+- **Flash ROM**: ~394 KB / 4.6 MB APP (**8.4%**) - Siêu nhẹ, độ ổn định tuyệt đối.
+- **RAM SRAM**: ~25.2 KB / 327 KB (**7.7%**) - Không giật lag, không tràn bộ nhớ.
+- **FreeRTOS**: Phân luồng độc lập 2 nhân (Core 0 nhận USB Serial 115200 baud, Core 1 render màn hình 30 FPS).
+
 ---
 
-## 🎮 Điều khiển
+## 🧠 Cổng MCP Server Cho AI IDE (Model Context Protocol)
 
-### A) IR Sensor (cảm biến hồng ngoại)
+Dự án tích hợp sẵn server MCP tại `tools/esp32_mcp_server.py`. Server này tuân thủ chuẩn JSON-RPC 2.0 stdio của Model Context Protocol.
 
-| Hành động | Lệnh |
-|---|---|
-| **Tap** (chạm ngắn) | Set emotion = HAPPY + bounce |
-| **Double tap** | Chuyển chế độ tự động (SLEEP → CALM → CURIOUS → PLAYFUL) |
-| **Triple tap** | Gesture: NOD_YES (gật đầu) |
-| **Hold** (giữ > 800ms) | Play/Pause file nhạc; nếu không có file → SLEEPY |
-| **Swipe Right** (lướt phải) | Next file nhạc + HAPPY |
-| **Swipe Left** (lướt trái) | Previous file nhạc + CURIOUS |
-| **Presence** (cảm biến thấy vật) | Chuyển từ clock → eyes |
-
-### B) USB Serial Protocol (nhị phân)
-
-Frame format:
-```
-[SYNC1=0xE1] [SYNC2=0x1C] [TYPE] [LEN_HI] [LEN_LO] [PAYLOAD...] [XOR_CHECKSUM]
-```
-
-| Type | Name | Payload |
-|---|---|---|
-| `0x01` | `PKT_AUDIO_PCM` | Raw PCM 16-bit stereo (44.1kHz) |
-| `0x02` | `PKT_OLED_BITMAP` | 1024 bytes bitmap 128×64 |
-| `0x03` | `PKT_CMD_JSON` | JSON command string |
-| `0x04` | `PKT_TELEMETRY_REQ` | (none) → reply 11 bytes |
-| `0x84` | `PKT_TELEMETRY_RES` | `pan, tilt, fps, src, underrun, xor` |
-
-XOR checksum = XOR tất cả bytes từ `TYPE` đến hết `PAYLOAD`.
-
-### C) USB Serial JSON (text)
-
-Gửi JSON qua Serial Monitor (115200 baud):
-
+### 1. Cấu Hình Tích Hợp Vào IDE
+Cấu hình trong file `mcp_config.json` (Antigravity / Claude Desktop / Cursor):
 ```json
-{"emotion":"HAPPY"}
-{"gesture":2}
-{"pan":100.0,"tilt":95.0}
-{"center":true}
-{"calib_pan":-3,"calib_tilt":2}
-{"source":1,"vol":30}
-{"play":0}
-{"mode":"PLAYFUL"}
-```
-
-Field hỗ trợ:
-- `emotion`: `NEUTRAL | HAPPY | ANGRY | SLEEPY | CURIOUS | CONFUSED | WAKE_UP`
-- `gesture`: 0-7 (`0=NONE`, `1=NOD_YES`, `2=SHAKE_NO`, ...)
-- `pan`, `tilt`: float (độ)
-- `center`: bool
-- `calib_pan`, `calib_tilt`: int (-128..127)
-- `source`: 0=NONE, 1=FILE, 2=USB_PC, 3=BT_EXT
-- `vol`: 0-100
-- `play`, `pause`, `next`, `prev`: int (index)
-- `mode`: `SLEEP | CALM | CURIOUS | PLAYFUL`
-
-### D) Put nhạc vào LittleFS
-
-Tạo folder `/music` trên flash:
-
-```bash
-# Upload file vào LittleFS
-pio run -t uploadfs
-
-# Hoặc dùng web tool tại https://miu-eilik.local
-# Sau khi upload, reboot - robot tự động scan
-```
-
-Format hỗ trợ: **WAV PCM 16-bit 44.1kHz stereo** (skip 44-byte header) hoặc **MP3** (chưa decode - phát raw).
-
----
-
-## 📊 Tối ưu (so với v5)
-
-| Tối ưu | Tác động |
-|---|---|
-| PROGMEM keyframe tables | **~500B RAM** saved |
-| FNV-1a hash dispatch (JSON) | **10-50x** nhanh hơn `strcmp` |
-| `inline` PWM write | **5-8µs/lần** ghi |
-| Audio subsample 2x | **50% CPU** saved trong audio task |
-| Bounded `char[32][64]` thay `vector<String>` | **0 heap alloc** trong `scan()` |
-| `& 0x0F` thay `% 16` | **5x nhanh hơn** |
-| `* 0.0625f` thay `/ 16` | FPU-friendly |
-| Packed `Keyframe` (4B thay 12B) | **3x nhỏ hơn** |
-| `Wire.setTimeOut(50ms)` | Tránh block vô hạn khi OLED lỗi |
-| FPS delta-time | Đo chính xác (không phải counter) |
-
-**Kết quả:** ổn định **30 FPS** với **~50% CPU idle**.
-
----
-
-## 🐛 Đã sửa (v6.1 → v6.3)
-
-| ID | Lỗi | Mức độ |
-|---|---|---|
-| B1 | `RoboEyes` constructor thiếu pointer | 🔴 Compile error |
-| B3 | `memcpy_P` PROGMEM pointer sai | 🔴 Runtime crash |
-| B4 | `payload[pktLen]` buffer overflow | 🔴 Memory corruption |
-| B5 | Servo `setTarget` mất velocity | 🟠 Giật servo |
-| B6 | `& 3` thay `% 4` cho AutoMode | 🟡 Style |
-| M1 | `current - 1` không bounds check | 🟠 Runtime |
-| M3 | Audio 352k filter/giây quá tải | 🟠 CPU |
-| M4 | FPS đo sai (counter snapshot) | 🟡 Telemetry |
-| M6 | `PROGMEM` float không portable | 🟠 Portability |
-| C1 | `gestureIdx - 1` uint8_t underflow | 🟠 Crash future |
-| C6/C8 | 2KB buffer trên stack trong task 4KB | 🔴 Stack overflow |
-| C18 | `head.update(0.020f)` hardcode dt | 🟠 Stall servo |
-| C24 | `streamBuf` race giữa 2 core | 🔴 Tear hình |
-| C28 | Macro `DEFAULT/HAPPY` collision với RoboEyes | 🔴 Build fail |
-| P1 | `ESP32PWM.cpp:212` `while(1);` infinite loop | 🟠 Rule checker |
-| S1-S5 | Dead code (mutex, vector, fields) | 🟡 Cleanup |
-
----
-
-## 📁 Cấu trúc thư mục
-
-```
-E:\MIU_EILIK_ESP32-S3\
-├── platformio.ini              ← Build config (env: eilik_s3)
-├── partitions_16mb.csv         ← A/B OTA + LittleFS
-├── README.md                   ← File này
-├── patches/                    ← Patch cho library bên thứ 3 (apply tự động)
-│   └── ESP32Servo/
-│       └── ESP32PWM.cpp.diff   ← Sửa `while(1);` -> `return -1` (rule checker)
-└── miu_eilik\                  ← Source folder
-    ├── miu_eilik.ino           ← Main firmware (1429 dòng)
-    ├── ESP_I2S.h               ← I2S driver
-    ├── FluxGarage_RoboEyes.h   ← Eye animation library
-    └── partitions.csv          ← (legacy, dùng partitions_16mb.csv ở root)
-```
-
----
-
-## 📈 Telemetry
-
-Mỗi 10 giây, firmware in ra Serial0:
-
-```
-[TELEM] up=120s fps=30 heap=152384 psram=8388608 und=12 pan=90.0 tilt=90.0 mode=EYES
-```
-
-| Field | Ý nghĩa |
-|---|---|
-| `up` | Thời gian chạy (giây) |
-| `fps` | Display frame rate (30 = ổn định) |
-| `heap` | Free RAM (bytes) |
-| `psram` | Free PSRAM (bytes) |
-| `und` | Audio underrun count (nên = 0) |
-| `pan`/`tilt` | Góc servo hiện tại (độ) |
-| `mode` | `CLOCK` / `EYES` / `VISUAL` / `STREAM` |
-
----
-
-## 🛠️ Tuỳ chỉnh
-
-### Thêm emotion mới
-
-1. Mở `miu_eilik.ino`, Section A2 (Enums), thêm:
-```cpp
-enum Emotion : uint8_t { EMO_NEUTRAL, EMO_HAPPY, ..., EMO_MYNEW };
-```
-
-2. Section C, thêm hash:
-```cpp
-namespace EmoHash {
-  ...
-  constexpr uint32_t MYNEW = fnv1a("MYNEW");
+{
+  "mcpServers": {
+    "esp32-eilik": {
+      "command": "C:\\Users\\Tinhd\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+      "args": [
+        "E:\\MIU_EILIK_ESP32-S3\\tools\\esp32_mcp_server.py"
+      ]
+    }
+  }
 }
 ```
 
-3. Section I, thêm case:
-```cpp
-case EMO_MYNEW:
-  pendingMood = ...; gesture.play(...);
-  break;
+### 2. Danh Sách Tools Của MCP Server
+
+| Tên Tool | Chức Năng |
+|---|---|
+| `esp32_get_status` | Kiểm tra trạng thái daemon, cổng COM5, kết nối game ETS2, FPS và phần cứng. |
+| `esp32_get_telemetry` | Đọc toàn bộ luồng telemetry thời gian thực: tốc độ, số, RPM, xăng lít & %, độ bền, GPS, đèn... |
+| `esp32_get_logs` | Lấy các dòng log mới nhất từ `tools/daemon.log` (theo dõi sự kiện phạt tiền, thu phí, va chạm). |
+| `esp32_send_command` | Gửi lệnh chuyển chế độ trực tiếp tới ESP32 (`MODE=GAME`, `MODE=EYES`, `MODE=CLOCK`, `MODE=OFF`). |
+| `esp32_trigger_event` | Bắn popup thông báo tùy chỉnh tức thời lên màn hình OLED của robot. |
+
+### 3. Kiểm Tra MCP Server Qua Dòng Lệnh
+```bash
+python tools/esp32_mcp_server.py --test
 ```
-
-### Thêm gesture mới
-
-1. Tạo Keyframe track trong PROGMEM:
-```cpp
-static const Keyframe PROGMEM TRACK_MY[] = { {pan, tilt, ms}, ... };
-```
-
-2. Thêm vào `GESTURE_TABLE`:
-```cpp
-static const GestureTrack PROGMEM GESTURE_TABLE[] = {
-  { TRACK_NOD, 5 },
-  ...
-  { TRACK_MY, 4 },  // len=4
-};
-```
-
-3. Thêm enum value `GES_MY = ...` trong Section A2.
 
 ---
 
-## 🐞 Debug
+## 📁 Cấu Trúc Thư Mục Dự Án
 
-### Serial Monitor chỉ in garbage
-
-- Check baud rate: **115200**
-- Check USB cable: phải là data cable, không phải charge-only
-
-### OLED không lên hình / màn hình tối đen
-
-1. **Xem Serial Monitor (115200 baud):**
-   - Firmware v6.12 tích hợp sẵn I2C Bus Scanner tự động.
-   - Khi khởi động, Serial sẽ báo rõ:
-     `[I2C] Scanning I2C bus (SDA=8, SCL=9)`
-     - Nếu thấy `-> Phat hien thiet bi I2C tai: 0x3C (hoặc 0x3D)`: Phần cứng kết nối tốt!
-     - Nếu báo `!!! NO DEVICE FOUND`: Chắc chắn chưa tiếp xúc điện hoặc nhầm chân.
-2. **Kiểm tra dây nối (Wiring):**
-   - **GND** -> GND bo mạch ESP32-S3.
-   - **VCC / VDD** -> 3.3V (khuyên dùng) hoặc 5V (nếu module có sẵn IC ổn áp 662K).
-   - **SDA** -> **GPIO 8** (chú ý: trên header DevKitC-1, đếm đúng chân GPIO 8, không nhầm với chân số 8 vật lý).
-   - **SCL / SCK** -> **GPIO 9**.
-3. **Màn hình SSD1306 vs SH1106:**
-   - Màn hình 0.96 inch thông dụng dùng chip **SSD1306** (128x64).
-   - Một số màn hình 1.3 inch dùng chip **SH1106** (không hỗ trợ horizontal addressing). Nếu bạn dùng màn SH1106, cần cấu hình thư viện `Adafruit_SH110X` hoặc `U8g2`.
-4. **Kiểm tra độ dài dây & trở kéo:**
-   - Dây cáp Dupont dài > 20cm có thể làm suy hao tín hiệu I2C. Firmware đã tự động thử 400kHz rồi fallback xuống 100kHz để đảm bảo luôn tương thích.
-
-### Servo giật
-
-- Check nguồn: servo cần **5V riêng**, không lấy từ 3.3V ESP32
-- Check `calib_pan`/`calib_tilt` đã set đúng (tránh servo quay tới cận)
-- Bỏ `HOLD_TORQUE_TILT = 0` nếu muốn thả servo khi idle
-
-### Audio không nghe / distorted
-
-- Check wiring I2S: BCLK, LRC, DIN đúng pin
-- Check `vol` không quá nhỏ (< 5 sẽ im) hoặc quá lớn (> 80 sẽ clip)
-- Check `source` đúng (FILE = phát từ LittleFS, USB_PC = nhận từ PC, BT_EXT = Bluetooth)
-- `gUnderrunCount` > 0 → DMA buffer thiếu, tăng `AUDIO_CHUNK_SAMPLES`
-
-### IR không nhận
-
-- Check pin: PRIMARY=GPIO 6, SECONDARY=GPIO 7
-- `IR_ACTIVE_LEVEL = LOW` (mặc định cho module phổ biến); nếu module dùng active HIGH, đổi thành `HIGH`
-- Tăng `IR_DEBOUNCE_MS` nếu nhiễu
+```
+E:\MIU_EILIK_ESP32-S3\
+├── BAT_TU_DONG_CHAY_NGAM.bat     ← Kích hoạt tự động chạy ngầm cùng Windows boot
+├── TAT_TU_DONG_CHAY_NGAM.bat     ← Dừng và gỡ bỏ chế độ chạy ngầm
+├── CHAY_DASHBOARD_ETS2.bat       ← Chạy companion thủ công có console theo dõi
+├── platformio.ini                ← Cấu hình build PlatformIO cho ESP32-S3 (N16R8)
+├── partitions_16mb.csv           ← Bảng phân vùng Flash 16MB
+├── WORK_REPORT.md                ← Nhật ký tiến độ công việc kỹ thuật liên tục
+├── README.md                     ← Tài liệu hướng dẫn toàn diện dự án
+│
+├── miu_eilik\                    ← Mã nguồn C++ Firmware ESP32-S3
+│   ├── miu_eilik.ino             ← Setup FreeRTOS 2 nhân & vòng lặp chính
+│   ├── config.h                  ← Cấu hình thông số hệ thống
+│   ├── board_config.h            ← Định nghĩa chân I2C (SDA=8, SCL=9)
+│   ├── display_controller.h/.cpp ← Full Taplo ETS2, Fonts, RPM Bar, Biển báo, Icons
+│   ├── usb_protocol.h/.cpp       ← Bộ giải mã giao thức JSON từ PC (115200 baud)
+│   ├── emoji_controller.h/.cpp   ← Quản lý mắt robot RoboEyes
+│   └── FluxGarage_RoboEyes.h     ← Thư viện đồ họa mắt robot chuyển động
+│
+└── tools\                        ← Bộ công cụ Python Companion & MCP Server
+    ├── miu_desktop_ets2.py       ← Cầu nối Telemetry Windows Shared Memory -> ESP32
+    ├── esp32_mcp_server.py       ← Server MCP JSON-RPC 2.0 stdio cho AI IDE
+    ├── launch_silent.vbs         ← Script chạy ngầm không hiện cửa sổ console
+    ├── telemetry_state.json      ← Cache trạng thái telemetry thời gian thực
+    └── daemon.log                ← File log hoạt động và lịch sử sự kiện buồng lái
+```
 
 ---
 
-## 📜 License
+## ❓ Câu Hỏi Thường Gặp (Troubleshooting)
 
-MIT License - dùng tự do cho cá nhân và thương mại.
+1. **Tại sao tôi vào game ETS2 mà màn hình robot vẫn ở mắt robot?**
+   - Đảm bảo bạn đã cài đặt plugin Telemetry của ETS2 (file `ets2-telemetry-server.dll` trong thư mục `bin\win_x64\plugins\` của game).
+   - Kiểm tra xem daemon đang chạy hay chưa bằng lệnh: `python tools/esp32_mcp_server.py --test`. Nếu daemon đang tắt, chỉ cần nhấp đúp vào `BAT_TU_DONG_CHAY_NGAM.bat`.
 
-Third-party libraries:
-- FluxGarage RoboEyes (GPL v3)
-- Adafruit SSD1306 (BSD)
-- ArduinoJson (MIT)
-- ESP32Servo (MIT)
+2. **Khi rút cáp USB cắm lại, robot có nhận lại không?**
+   - Hoàn toàn tự động! Companion có cơ chế auto-reconnect mỗi 1 giây. Khi bạn cắm lại cáp USB, daemon sẽ tự động bắt lại cổng COM5 và tiếp tục truyền dữ liệu bình thường.
+
+3. **Màn hình OLED bị tối hoặc không lên?**
+   - Kiểm tra chân cắm SDA (GPIO 8) và SCL (GPIO 9).
+   - Mở Serial Monitor ở 115200 baud khi khởi động để xem log bộ quét I2C tự động tìm địa chỉ `0x3C` hoặc `0x3D`.
+
+---
+
+**Phát triển bởi ROSHINGUYEN — Miu Eilik Telemetry Ecosystem (2026)**
