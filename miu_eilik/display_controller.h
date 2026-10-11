@@ -66,6 +66,8 @@ struct Ets2TelemetryData {
   bool wipers = false;        // gat mua
   bool beacon = false;        // den chop xoay noc
   bool motorBrake = false;    // phanh dong co
+  int gameHour = -1;          // gio dong ho trong game (-1: chua co)
+  int gameMin = -1;           // phut dong ho trong game
   char eventText[32] = "";    // thong bao toast: "-550 EUR", "RETARDER: 2", "GAT MUA: BAT"
   unsigned long eventUntilMs = 0;
   unsigned long lastUpdateMs = 0;

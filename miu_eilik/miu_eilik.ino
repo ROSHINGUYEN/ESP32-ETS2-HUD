@@ -145,8 +145,8 @@ void processSerialLine(String line) {
     display.mode = DISP_CLOCK;
     display.gameModeLocked = false;
     LOG_PRINTLN(F("[MODE] Da chuyen sang Clock"));
-  } else if (line.startsWith("FS25=") || line.startsWith("FS25:") || line.startsWith("{\"fs25\":") ||
-             line.startsWith("ETS2=") || line.startsWith("ETS2:") || line.startsWith("{\"game\":") || line.startsWith("{\"spd\":")) {
+  } else if (line.startsWith("FS25=") || line.startsWith("FS25:") || line.startsWith("ETS2=") || line.startsWith("ETS2:") ||
+             (line.indexOf('{') >= 0 && (line.indexOf("\"game\"") >= 0 || line.indexOf("\"spd\"") >= 0 || line.indexOf("\"fs25\"") >= 0 || line.indexOf("\"gear\"") >= 0))) {
     int startIdx = line.indexOf('{');
     if (startIdx >= 0) {
       String jsonStr = line.substring(startIdx);
@@ -228,7 +228,6 @@ void loop() {
 #if ENABLE_WIFI
   ets2Wifi.update();
 #endif
-  checkSerialCommands();
   unsigned long now = millis();
 
 #if ENABLE_WIFI

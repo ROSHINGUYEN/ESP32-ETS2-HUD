@@ -12,6 +12,8 @@ if (-not $pythonw) {
 
 $scriptPath = Join-Path $PSScriptRoot "miu_desktop_ets2.py"
 
-# Chay an hoan toan khong hien cua so
-Start-Process -FilePath $pythonw -ArgumentList "`"$scriptPath`"" -WindowStyle Hidden
-Write-Host "[OK] Da kich hoat tien trinh chay ngam: $pythonw"
+$logPath = Join-Path $PSScriptRoot "daemon.log"
+
+# Chay an hoan toan khong hien cua so, ghi log vao daemon.log
+Start-Process -FilePath $pythonw -ArgumentList "`"$scriptPath`"" -RedirectStandardOutput $logPath -RedirectStandardError $logPath -WindowStyle Hidden
+Write-Host "[OK] Da kich hoat tien trinh chay ngam: $pythonw (Log: $logPath)"

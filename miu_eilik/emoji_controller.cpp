@@ -212,6 +212,7 @@ void EmojiController::RandomAct() {
 
 void EmojiController::Update() {
     if (!auto_enabled_ || is_busy_) return;
+    if (display.mode == DISP_GAME || display.mode == DISP_FS25) return;
 
     if (millis() - last_act_time_ >= auto_interval_ms_) {
         last_act_time_ = millis();

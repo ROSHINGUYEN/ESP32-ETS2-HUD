@@ -16,40 +16,44 @@ import struct
 from ctypes import wintypes
 from typing import Optional, Dict, Any
 
-class NullWriter:
-    def write(self, *args, **kwargs):
-        pass
+class SafeStdoutWriter:
+    def __init__(self, original, fallback_path=None):
+        self.orig = original
+        self.fallback = None
+        if fallback_path:
+            try:
+                self.fallback = open(fallback_path, "a", encoding="utf-8", buffering=1)
+            except Exception:
+                pass
+
+    def write(self, s):
+        if self.orig:
+            try:
+                self.orig.write(s)
+            except Exception:
+                pass
+        if self.fallback:
+            try:
+                self.fallback.write(s)
+            except Exception:
+                pass
+        return len(s) if s else 0
+
     def flush(self):
-        pass
+        if self.orig:
+            try:
+                self.orig.flush()
+            except Exception:
+                pass
+        if self.fallback:
+            try:
+                self.fallback.flush()
+            except Exception:
+                pass
 
-# Kiem tra neu stdout/stderr bi loi handle hoac chay ngam khong co console (SW_HIDE)
-try:
-    if sys.stdout is None:
-        raise OSError("No stdout")
-    sys.stdout.write("")
-    sys.stdout.flush()
-    if hasattr(sys.stdout, "reconfigure"):
-        try:
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-except Exception:
-    try:
-        log_path = os.path.join(os.path.dirname(__file__), "daemon.log")
-        _log_file = open(log_path, "a", encoding="utf-8", buffering=1)
-        sys.stdout = _log_file
-        sys.stderr = _log_file
-    except Exception:
-        sys.stdout = NullWriter()
-        sys.stderr = NullWriter()
-
-try:
-    if sys.stderr is None:
-        raise OSError("No stderr")
-    sys.stderr.write("")
-    sys.stderr.flush()
-except Exception:
-    sys.stderr = sys.stdout
+log_path = os.path.join(os.path.dirname(__file__), "daemon.log")
+sys.stdout = SafeStdoutWriter(sys.stdout, log_path)
+sys.stderr = SafeStdoutWriter(sys.stderr, log_path)
 
 try:
     import serial
@@ -123,6 +127,10 @@ class Ets2SharedMemoryReader:
             if time_ms == 0:
                 return None
 
+            t_game = struct.unpack_from("<I", raw, 8)[0]
+            game_h = (t_game // 60) % 24
+            game_m = t_game % 60
+
             speed_ms = struct.unpack_from("<f", raw, 24)[0]
             gear = struct.unpack_from("<i", raw, 64)[0]
             rpm, rpmMax, fuel, fuelCap = struct.unpack_from("<4f", raw, 80)
@@ -172,6 +180,8 @@ class Ets2SharedMemoryReader:
                 "mbrk": 1 if mbrk else 0,
                 "wear": total_wear,
                 "eta_d": int(round(nav_d)) if nav_d > 0 else 0,
+                "gh": game_h,
+                "gm": game_m,
                 "conn": 1,
                 "pause": 1 if (paused != 0) else 0,
             }
@@ -212,6 +222,7 @@ class Ets2DesktopCompanion:
         game: str = "ets2",
         test_file: Optional[str] = None,
     ):
+        self.specified_port = port
         self.port_name = port
         self.baud = baud
         self.game = game.lower()
@@ -353,40 +364,39 @@ class Ets2DesktopCompanion:
             self.ser.port = self.port_name
             self.ser.baudrate = self.baud
             self.ser.timeout = 0.1
-            self.ser.write_timeout = 0.2
+            self.ser.write_timeout = 2.0
             self.ser.dtr = False
             self.ser.rts = False
             self.ser.open()
             time.sleep(0.3)
+            self.game_connected_prev = False
             # Neu o che do DEMO thi bat che do GAME ngay
             if self.demo:
                 if self.game == "fs25":
                     self.send_command("MODE=FS25")
                 else:
                     self.send_command("MODE=GAME")
-            else:
-                # Khi chua vao game, de robot o che do bieu cam mat RoboEyes mac dinh
-                self.send_command("MODE=EYES")
             print(f"[SERIAL] Da ket noi thanh cong voi {self.port_name} (Che do: {self.game.upper()})!")
             return True
         except Exception as e:
+            print(f"[SERIAL] Khong the mo cong {self.port_name}: {e}")
             self.ser = None
+            if not self.specified_port:
+                self.port_name = None
             return False
 
     def close_serial(self):
-        if self.shm_reader:
-            self.shm_reader.close()
         if self.ser:
             try:
                 if self.ser.is_open:
-                    # Tra man hinh ve mat RoboEyes truoc khi dong
-                    self.ser.write(b"MODE=EYES\n")
-                    time.sleep(0.1)
                     self.ser.close()
             except Exception:
                 pass
             self.ser = None
-            print("[SERIAL] Da dong cong Serial an toan.")
+            print("\n[SERIAL] Da ngat ket noi Serial an toan.")
+        if not self.specified_port:
+            self.port_name = None
+        self.game_connected_prev = False
 
     def ensure_serial(self) -> bool:
         """Tu dong kiem tra va ket noi lai cong Serial neu bi ngat."""
@@ -512,6 +522,8 @@ class Ets2DesktopCompanion:
             "mbrk": 0,
             "eta_d": max(5, int(145 - self._sim_t * 0.5)),
             "eta_t": max(5, int(110 - self._sim_t * 0.4)),
+            "gh": int(14 + (self._sim_t / 120.0)) % 24,
+            "gm": int((self._sim_t * 2) % 60),
             "conn": 1,
             "pause": 0,
         }
@@ -600,6 +612,20 @@ class Ets2DesktopCompanion:
         # ETA
         eta_d = int(round(nav.get("estimatedDistance", 0) / 1000.0))
 
+        # Game time
+        gh = -1
+        gm = -1
+        gt = game.get("time")
+        if isinstance(gt, str) and "T" in gt:
+            try:
+                t_part = gt.split("T")[1][:5]
+                gh, gm = map(int, t_part.split(":"))
+            except Exception:
+                pass
+        elif isinstance(gt, (int, float)):
+            gh = (int(gt) // 60) % 24
+            gm = int(gt) % 60
+
         payload = {
             "game": "ets2",
             "spd": int(round(truck.get("speed", 0.0))),
@@ -623,6 +649,8 @@ class Ets2DesktopCompanion:
             "mbrk": 1 if truck.get("motorBrakeOn", False) else 0,
             "wear": float(truck.get("wearEngine", 0.0) + truck.get("wearTransmission", 0.0) + truck.get("wearCabin", 0.0)),
             "eta_d": eta_d,
+            "gh": gh,
+            "gm": gm,
             "conn": 1 if game.get("connected", False) else 0,
             "pause": 1 if game.get("paused", False) else 0,
         }
@@ -677,8 +705,14 @@ class Ets2DesktopCompanion:
             self.ser.write(line)
             self.packets_sent += 1
             self.fps_counter += 1
+        except (serial.SerialException, OSError) as e:
+            print(f"\n[SERIAL ERROR] Mat ket noi voi robot: {e}")
+            self.close_serial()
+        except serial.SerialTimeoutException:
+            # Buffer timeout ngan mot khung hinh, bo qua de khong gay mat ket noi
+            pass
         except Exception as e:
-            print(f"[WRITE ERROR] {e}")
+            print(f"\n[WRITE ERROR] {e}")
             self.close_serial()
 
     def update_fps(self):
@@ -733,10 +767,13 @@ class Ets2DesktopCompanion:
             bcn_str = "BCN" if p.get("bcn", 0) else "   "
             evt_str = f"| >> {p['evt']} <<" if p.get("evt") else ""
 
-            sys.stdout.write(
-                f"\r| {bl_l} {gear_str:3s} {bl_r} | SPEED: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel:2d}% | {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
-            )
-            sys.stdout.flush()
+            try:
+                sys.stdout.write(
+                    f"\r| {bl_l} {gear_str:3s} {bl_r} | SPEED: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel:2d}% | {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
+                )
+                sys.stdout.flush()
+            except Exception:
+                pass
 
     def run(self):
         self.running = True
@@ -789,6 +826,7 @@ class Ets2DesktopCompanion:
                                 self.send_command("MODE=FS25")
                             else:
                                 self.send_command("MODE=GAME")
+                            time.sleep(0.05)
                         if self.game == "ets2":
                             self.process_events(payload)
                         self.send_telemetry_packet(payload)

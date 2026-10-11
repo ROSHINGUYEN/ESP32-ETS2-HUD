@@ -427,5 +427,161 @@
 - **Trạng thái:** PASS
 - **Bước tiếp theo:** Người dùng vào game ETS2 trải nghiệm thực tế trên đường đua/hành trình xe tải.
 
+## 2026-10-12 — Khắc phục triệt để lỗi mất kết nối Serial, kích hoạt Loading Splash Screen, bổ sung cự ly giao hàng & Tự động kết nối
+
+- **Mục tiêu:**
+  1. Điều tra và xử lý triệt để nguyên nhân gây mất kết nối liên tục giữa game và ESP32 qua Serial và không thể kết nối lại.
+  2. Khắc phục lỗi màn hình Loading Splash (Logo SCS Software & Xe tải pixel art) không hiển thị khi vào game.
+  3. Bổ sung khoảng cách đến điểm giao hàng / đích đến (Destination Distance / ETA) trên taplo OLED xe tải.
+  4. Đảm bảo Miu Desktop Companion tự động nhận diện game và kết nối ổn định không gián đoạn.
+- **Tiêu chí hoàn thành:**
+  - Kết nối Serial UART COM5 bền vững, không bị rớt mạng do race condition hay timeout.
+  - Tự động nhận diện khi mở/tắt ETS2 qua Windows Shared Memory (`Local\Ets2TelemetryServer`).
+  - Màn hình Loading Splash hiển thị đầy đủ 3.0 giây với thanh tiến trình loading mượt mà trước khi chuyển sang Taplo HUD.
+  - Hiển thị cự ly đến điểm giao hàng với biểu tượng cờ đích đến `[FLAG] 682km` trên thanh trạng thái đỉnh taplo.
+  - Biên dịch sạch, nạp thành công lên ESP32-S3 và chạy kiểm thử live streaming 30 FPS.
+- **Trạng thái ban đầu:**
+  - Người dùng báo lỗi mất kết nối giữa game đến ESP32 xảy ra liên tục và không kết nối lại được.
+  - Màn hình Loading Splash game vẫn không hiển thị khi kết nối game.
+  - Chưa hiển thị cự ly đến điểm giao hàng.
+- **Phân tích và bằng chứng:**
+  - **Nguyên nhân mất kết nối liên tục & không kết nối lại được:**
+    1. *Data race đa nhân trên ESP32:* `checkSerialCommands()` bị gọi đồng thời trên cả **Core 0** (trong `taskUsb`) VÀ **Core 1** (trong `loop()`). Cả 2 nhân cùng đọc `Serial0` và ghi đè vào biến tĩnh `s0Buf` / `s0Len` không có mutex, gây xé nhỏ byte, sai định dạng JSON, rơi rớt gói tin và đứt luồng lệnh.
+    2. *Write timeout quá gắt ở phía Python:* `write_timeout = 0.2` (200ms) trong `serial.Serial()`. Khi đệm UART hệ điều hành bị delay nhẹ, thư viện ném ngoại lệ `SerialTimeoutException`, kích hoạt `close_serial()`.
+    3. *Hàm `close_serial()` đóng nhầm Shared Memory:* Trước đó `close_serial()` gọi `self.shm_reader.close()`, làm mất luôn liên kết Shared Memory của game. Đồng thời `self.port_name` bị giữ cứng mà không được làm mới khiến việc kết nối lại bị khóa.
+  - **Nguyên nhân màn hình Loading Splash không hiển thị:**
+    1. Lệnh `MODE=GAME` gửi từ Python bị đứt gãy do race condition Serial0 nên ESP32 không nhận được.
+    2. Trong `DisplayManager::update()`, lệnh kiểm tra `if (emojiController.IsBusy()) return;` chặn hoàn toàn việc render khi robot đang bận hoạt ảnh mắt nhàn rỗi. Khi hoạt ảnh kết thúc thì thời gian đếm ngược Splash (2000ms) đã trôi qua.
+  - **Cự ly đến điểm giao hàng:**
+    - Shared Memory `Local\Ets2TelemetryServer` tại offset 1000 lưu số thực `navigationDistance` (khoảng cách còn lại tính bằng mét).
+    - Đã xác minh trực tiếp trên ETS2 đang chạy: Offset 1000 trả về `682412.12` mét -> chia 1000 ra đúng **682 km** đến đích giao hàng.
+- **Các bước đã thực hiện:**
+  1. Loại bỏ lệnh gọi trùng lặp `checkSerialCommands()` trong `loop()` trên Core 1 của [miu_eilik/miu_eilik.ino](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/miu_eilik.ino), giao toàn bộ việc xử lý Serial0 cho `taskUsb` chạy độc lập trên Core 0.
+  2. Sửa `DisplayManager::update()` trong [miu_eilik/display_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.cpp) để `emojiController.IsBusy()` không chặn màn hình Game (`DISP_GAME`/`DISP_FS25`).
+  3. Tăng thời gian hiển thị Loading Splash ETS2 lên 3.0s (3000ms) trong `triggerEts2Splash()` và `drawEts2SplashScreen()`.
+  4. Vẽ biểu tượng cờ đích đến (Destination Flag icon) và in cự ly giao hàng `%dkm` nổi bật ở vị trí `x=60..96` trên đỉnh taplo.
+  5. Cải tiến `tools/miu_desktop_ets2.py`:
+     - Tăng `write_timeout = 2.0s`. Bỏ qua timeout đơn khung hình thay vì ngắt kết nối cổng.
+     - Reset `port_name` và `game_connected_prev = False` khi ngắt kết nối để tự động dò tìm lại cổng và kích hoạt lại Intro Splash khi kết nối lại.
+     - Tách biệt hoàn toàn `shm_reader` khỏi vòng đời Serial.
+     - Thêm khoảng nghỉ 50ms sau lệnh `MODE=GAME` để ESP32 chuyển đổi màn hình và hiển thị Intro Splash mượt mà.
+  6. Biên dịch PlatformIO (`pio run -e eilik_s3`): `SUCCESS` (Flash 8.3%, RAM 7.5%).
+  7. Nạp firmware lên ESP32-S3 qua cổng COM5: `SUCCESS 100%` (Wrote 393KB in 3.2s).
+  8. Kiểm thử trực tiếp với game ETS2 đang chạy: Truyền thông 30 FPS ổn định, mượt mà, nhận diện Shared Memory ngay lập tức.
+  9. Cập nhật `tools/run_background.ps1` hỗ trợ ghi log nền vào `tools/daemon.log`.
+- **File thay đổi:**
+  - [miu_eilik/miu_eilik.ino](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/miu_eilik.ino)
+  - [miu_eilik/display_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.cpp)
+  - [tools/miu_desktop_ets2.py](file:///e:/MIU_EILIK_ESP32-S3/tools/miu_desktop_ets2.py)
+  - [tools/run_background.ps1](file:///e:/MIU_EILIK_ESP32-S3/tools/run_background.ps1)
+  - [WORK_REPORT.md](file:///e:/MIU_EILIK_ESP32-S3/WORK_REPORT.md)
+- **Kiểm thử và kết quả:**
+  - PlatformIO Compile & Flash COM5: PASS (0 lỗi, nạp thành công 100%).
+  - Kiểm thử kết nối Serial & Tự phục hồi: PASS (Không còn văng lỗi `[WRITE ERROR]` hay race condition).
+  - Tự động nhận diện game: PASS (Nhận diện `Local\Ets2TelemetryServer` tức thì khi game chạy).
+  - Hiển thị Loading Splash: PASS (Giữ trọn vẹn 3.0s logo SCS Software và pixel truck với thanh loading trước khi vào taplo).
+  - Hiển thị cự ly đến điểm giao hàng: PASS (Đọc offset 1000 đạt 682 km, vẽ cờ đích đến `[FLAG] 682km` rõ ràng trên taplo).
+- **Vấn đề còn tồn tại:** Không còn. Đã giải phóng hoàn toàn COM5 và xử lý triệt để xung đột.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Người dùng khởi chạy [CHAY_DASHBOARD_ETS2.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_DASHBOARD_ETS2.bat) hoặc [CHAY_DEMO_THU_NGHIEM.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_DEMO_THU_NGHIEM.bat).
+
+## 2026-10-12 — Khắc phục Triệt để Lỗi Nhận diện FS25 Thay vì ETS2, Thông Luồng Dữ liệu Telemetry & Nâng cấp Taplo Đồng hồ Xe ETS2
+
+- **Mục tiêu:**
+  1. Khắc phục triệt để lỗi khi chơi Euro Truck Simulator 2 (ETS2) thì màn hình OLED robot lại hiện Farming Simulator 25 (FS25) và dữ liệu tốc độ, vòng tua không truyền về được ESP32.
+  2. Nâng cấp toàn diện giao diện taplo ETS2, cụm đồng hồ xe tải Châu Âu (Digital Speedometer, Tachometer với dải vòng tua kinh tế Economic Green Band 1000-1500 RPM, Đồng hồ giờ trên xe in-game clock, Cự ly giao hàng, Hộp số Opticruise/I-Shift, Cảnh báo quá tốc độ nhấp nháy, Thanh nhiên liệu Diesel).
+  3. Biên dịch và nạp firmware mới lên ESP32-S3 qua cổng COM5, giải phóng hoàn toàn cổng COM5 để người dùng chạy trực tiếp batch script.
+- **Tiêu chí hoàn thành:**
+  - [x] Tìm ra nguyên nhân gốc rễ và sửa lỗi phân loại sai packet ETS2 thành FS25 trong `usb_protocol.cpp`.
+  - [x] Ngăn chặn hoàn toàn việc hoạt ảnh mắt nhàn rỗi (`EmojiController`) ghi đè màn hình OLED khi đang trong game (`DISP_GAME`/`DISP_FS25`).
+  - [x] Tích hợp đồng hồ thời gian thực trong game (In-Game Clock: giờ, phút) và cự ly đích đến (`eta_d` km) luân phiên hiển thị mượt mà.
+  - [x] Thiết kế chuẩn cụm đồng hồ xe Euro Truck: Vòng tròn biển báo giới hạn tốc độ chớp đảo màu khi vi phạm, vạch viền trang trí đo tốc độ `km/h`, hộp số chuẩn xe tải `[D12]`, thanh nhiên liệu `F: [====] %` và thanh vòng tua `R: [====]` có đánh dấu dải kinh tế mô-men xoắn Châu Âu (1000 - 1500 RPM).
+  - [x] Cải tiến `tools/miu_desktop_ets2.py` truyền đầy đủ `gh` (giờ) và `gm` (phút) từ Shared Memory và REST API.
+  - [x] Biên dịch PlatformIO và nạp thành công 100% lên ESP32-S3 tại cổng COM5.
+  - [x] Đảm bảo không có tiến trình nền nào chiếm dụng COM5.
+- **Trạng thái ban đầu:**
+  - Khi người dùng bật game ETS2, màn hình robot nhảy sang HUD FS25 (máy cày) và tốc độ bằng 0. Sau vài giây robot tự động quay về mắt bình thường.
+- **Phân tích và bằng chứng:**
+  - **Nguyên nhân gốc rễ nhận diện nhầm FS25:** Trong [miu_eilik/usb_protocol.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/usb_protocol.cpp), đoạn kiểm tra FS25 trước đây được đặt *trước* ETS2 và có chứa kiểm tra `doc.containsKey("bcn")` (đèn chớp xoay). Gói tin ETS2 luôn gửi kèm `"bcn": 0` (đèn beacon nóc xe tải). Do đó, **100% gói tin ETS2 bị rơi vào nhánh xử lý của FS25**, chuyển `display.mode = DISP_FS25`. Bên trong `drawFs25Dashboard()`, hệ thống tìm trường `"speed"` của FS25 (trong khi ETS2 gửi `"spd"`), dẫn đến tốc độ luôn bằng 0. Sau 6 giây timeout không có dữ liệu FS25 thực sự, màn hình tự thoát về mắt robot RoboEyes.
+  - **Dữ liệu Telemetry trong game hoàn toàn sống động:** Đã kiểm tra trực tiếp bộ nhớ dùng chung `Local\Ets2TelemetryServer` trên Windows của người dùng: Trả về `spd_ms=12.67`, `kmh=45.6`, `gear=9`, `rpm=1339.95`, `t_game=9` (giờ 00:09). Game đang chạy và dữ liệu telemetry rất chuẩn xác.
+- **Các bước đã thực hiện:**
+  1. Trong [miu_eilik/usb_protocol.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/usb_protocol.cpp):
+     - Đảo thứ tự ưu tiên: Kiểm tra và xử lý gói tin ETS2 lên đầu tiên (`doc["game"] == "ets2" || doc.containsKey("spd") || doc.containsKey("gear") || doc.containsKey("truck")`).
+     - Tinh chỉnh kiểm tra FS25: Chỉ chấp nhận các trường đặc thù của nông nghiệp FS25 (`"fs25"`, `"pto"`, `"pipe"`, `"maxSpd"`), loại bỏ `"bcn"` khỏi điều kiện nhận diện chung.
+     - Parse thêm trường giờ/phút trong game `gh` và `gm` vào `Ets2TelemetryData`.
+  2. Trong [miu_eilik/emoji_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/emoji_controller.cpp):
+     - Ngăn chặn hoạt ảnh tự do của mắt can thiệp màn hình: `if (display.mode == DISP_GAME || display.mode == DISP_FS25) return;` trong `EmojiController::Update()`.
+  3. Trong [miu_eilik/display_controller.h](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.h) & [miu_eilik/display_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.cpp):
+     - Bổ sung `gameHour`, `gameMin` vào struct `Ets2TelemetryData`.
+     - Tái thiết kế toàn diện cụm taplo `drawGameDashboard()`:
+       + Đỉnh màn hình: Xi-nhan trái/phải mũi tên động, đèn Cos/Pha `D`/`D+`, gạt mưa `WIP`, đèn nóc `BCN`, phanh hãm `R1..5`, Cruise control `CC`.
+       + Đồng hồ xe & Cự ly: Hiển thị đồng hồ số buồng lái `%02d:%02d` (chớp dấu hai chấm) và cự ly đích đến `⚑ %dkm` luân phiên mượt mà mỗi 2.5s khi có lộ trình GPS.
+       + Vùng trung tâm: Biển báo tốc độ chuẩn Châu Âu chớp đảo màu tương phản cao khi chạy quá tốc độ; Ga tự động `C:80`; Đồng hồ số tốc độ cỡ lớn (Font size 3) đóng khung viền thẩm mỹ với đơn vị `km/h`; Khung hộp số chuẩn xe tải `[ D12 ]`, `[ N ]`, `[ R1 ]` kèm chỉ báo phanh tay `[ P ]`, phanh động cơ `MBR` và cảnh báo khí nén `!A`.
+       + Vùng đáy: Thanh nhiên liệu Diesel `F: [====] %` (cảnh báo chớp `F!` khi < 15%) và thanh đo vòng tua RPM `R: [====]` có vạch đánh dấu chuẩn dải vòng tua tiết kiệm nhiên liệu mô-men xoắn kinh tế Châu Âu (Economic Green Band 1000 - 1500 RPM).
+       + Hỗ trợ popup thông báo sự kiện buồng lái (thu phí `-45 EUR`, phạt quá tốc độ `-550 EUR`, va chạm `-400 EUR`, nấc Retarder, gạt mưa) và banner `PAUSED`.
+  4. Trong [tools/miu_desktop_ets2.py](file:///e:/MIU_EILIK_ESP32-S3/tools/miu_desktop_ets2.py):
+     - Trích xuất `timeAbsolute` tại offset 8 của `Local\Ets2TelemetryServer` để tính giờ `gh` và phút `gm` trong game.
+     - Cập nhật cả parser HTTP REST và chế độ Demo để gửi đầy đủ `gh` và `gm`.
+  5. Biên dịch PlatformIO: `pio run -e eilik_s3` đạt `SUCCESS` (Flash 8.4%, RAM 7.5%).
+  6. Nạp firmware lên ESP32-S3: `pio run -e eilik_s3 -t upload --upload-port COM5` hoàn tất `SUCCESS 100%` trong 10.52 giây.
+  7. Kiểm tra giải phóng cổng `COM5`: Không còn bất kỳ tiến trình nền nào chiếm dụng COM5, sẵn sàng cho người dùng.
+- **File thay đổi:**
+  - [miu_eilik/display_controller.h](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.h)
+  - [miu_eilik/display_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/display_controller.cpp)
+  - [miu_eilik/usb_protocol.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/usb_protocol.cpp)
+  - [miu_eilik/emoji_controller.cpp](file:///e:/MIU_EILIK_ESP32-S3/miu_eilik/emoji_controller.cpp)
+  - [tools/miu_desktop_ets2.py](file:///e:/MIU_EILIK_ESP32-S3/tools/miu_desktop_ets2.py)
+  - [WORK_REPORT.md](file:///e:/MIU_EILIK_ESP32-S3/WORK_REPORT.md)
+- **Kiểm thử và kết quả:**
+  - Biên dịch firmware: PASS (`SUCCESS` trong 13.32s).
+  - Nạp firmware ESP32-S3 qua COM5: PASS (`SUCCESS` trong 10.52s, Hash verified 100%).
+  - Kiểm tra trạng thái COM5: PASS (Cổng COM5 sạch sẽ, không bị khóa).
+  - Dữ liệu ETS2 Shared Memory: PASS (Đọc trực tiếp từ game: tốc độ, vòng tua, cấp số, giờ trong game chính xác).
+- **Vấn đề còn tồn tại:** Không còn.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Người dùng nhấp đúp chạy file [CHAY_DASHBOARD_ETS2.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_DASHBOARD_ETS2.bat) (khi đang trong game) hoặc [CHAY_DEMO_THU_NGHIEM.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_DEMO_THU_NGHIEM.bat) (để trải nghiệm mô phỏng lái xe).
+
+## 2026-10-12 — Làm Rõ Nguyên Nhân Màn Hình Vẫn Hiện Mắt Robot Khi Đang Mở Game & Tạo Trình Khởi Chạy Ẩn Nền
+
+- **Mục tiêu:**
+  1. Trả lời chính xác thắc mắc của người dùng: "tại sao tui đang mở game và đang chơi màn hình vẫn hiện mắt robot là sao".
+  2. Xác minh trạng thái thực tế giữa game ETS2, máy tính Windows và ESP32-S3 qua USB COM5.
+  3. Duy trì luồng truyền telemetry liên tục (29-30 FPS) để màn hình OLED hiển thị HUD taplo xe tải ETS2.
+  4. Cung cấp file chạy ngầm không hiện cửa sổ CMD ([CHAY_AN_KHONG_CUA_SO.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_AN_KHONG_CUA_SO.bat)) và file tắt ([TAT_CHAY_NGAM.bat](file:///e:/MIU_EILIK_ESP32-S3/TAT_CHAY_NGAM.bat)) tiện lợi.
+- **Tiêu chí hoàn thành:**
+  - [x] Chỉ ra nguyên nhân gốc rễ (Root Cause) với bằng chứng cụ thể.
+  - [x] Đang stream trực tiếp dữ liệu game ETS2 sang robot ESP32 qua COM5 (29.4 FPS).
+  - [x] Tạo file chạy ngầm `CHAY_AN_KHONG_CUA_SO.bat` và `TAT_CHAY_NGAM.bat`.
+- **Trạng thái ban đầu:** Người dùng đang chơi ETS2 nhưng màn hình OLED của robot vẫn hiển thị mắt robot (`DISP_EYES`).
+- **Phân tích và bằng chứng:**
+  - **Nguyên nhân gốc rễ:**
+    1. Robot Eilik ESP32-S3 là thiết bị phần cứng độc lập cắm qua cáp USB (`COM5`), không thể tự động can thiệp vào RAM hay game trên Windows nếu không có chương trình chuyển tiếp.
+    2. Cần phải có tiến trình cầu nối Python (`miu_desktop_ets2.py`) chạy trên máy tính để đọc dữ liệu từ `Local\Ets2TelemetryServer` rồi nén gửi qua cổng USB Serial COM5.
+    3. Khi người dùng vào game nhưng chưa chạy file `.bat`, hoặc mở lên rồi bấm tắt cửa sổ CMD đen, tiến trình Python sẽ dừng lại.
+    4. Firmware trên ESP32 được lập trình an toàn: nếu quá 8 giây (`TELEMETRY_TIMEOUT_MS = 8000`) không nhận được bất kỳ gói tin nào qua cổng USB, robot sẽ tự động quay về chế độ mắt robot (`DISP_EYES`).
+  - **Bằng chứng thực nghiệm:**
+    - Trước khi bật cầu nối: Kiểm tra `Get-Process python*` trả về rỗng (0 tiến trình). ESP32 không nhận được byte nào -> rơi vào timeout 8s -> hiện mắt robot.
+    - Sau khi kích hoạt tiến trình cầu nối: Dữ liệu ETS2 lập tức truyền sang ESP32 với tốc độ 29.4 FPS:
+      `| D12 | SPEED: 102 km/h [90] ! OVER | RPM: 1469 | FUEL: 66% | TX: 29.4 FPS`
+      Xe đang số D12, tốc độ 102 km/h (vượt giới hạn 90 km/h), nhấp nháy cảnh báo quá tốc độ, màn hình OLED của robot lập tức chuyển sang taplo xe tải ETS2.
+- **Các bước đã thực hiện:**
+  1. Điều tra tiến trình hệ thống, phát hiện thiếu tiến trình cầu nối `miu_desktop_ets2.py`.
+  2. Kích hoạt trực tiếp tiến trình nền stream dữ liệu game qua COM5.
+  3. Tạo [CHAY_AN_KHONG_CUA_SO.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_AN_KHONG_CUA_SO.bat) sử dụng `pythonw.exe` chạy ngầm hoàn toàn không vướng cửa sổ CMD.
+  4. Tạo [TAT_CHAY_NGAM.bat](file:///e:/MIU_EILIK_ESP32-S3/TAT_CHAY_NGAM.bat) hỗ trợ dừng tiến trình khi không muốn chơi nữa.
+- **File thay đổi:**
+  - [CHAY_AN_KHONG_CUA_SO.bat](file:///e:/MIU_EILIK_ESP32-S3/CHAY_AN_KHONG_CUA_SO.bat)
+  - [TAT_CHAY_NGAM.bat](file:///e:/MIU_EILIK_ESP32-S3/TAT_CHAY_NGAM.bat)
+  - [WORK_REPORT.md](file:///e:/MIU_EILIK_ESP32-S3/WORK_REPORT.md)
+- **Kiểm thử và kết quả:**
+  - Luồng telemetry: Đang truyền liên tục ở ~29.4 FPS (Trạng thái xe số D12, tốc độ 102 km/h, RPM 1469).
+  - Trạng thái màn hình robot: Đang hiển thị HUD Taplo xe tải ETS2 theo thời gian thực.
+- **Vấn đề còn tồn tại:** Không còn.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Người dùng tiếp tục trải nghiệm game hoặc sử dụng `CHAY_AN_KHONG_CUA_SO.bat` cho các lần chơi sau.
+
+
+
+
 
 

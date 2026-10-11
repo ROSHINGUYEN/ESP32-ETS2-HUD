@@ -68,34 +68,7 @@ void UsbLink::processJson(const char* json, size_t len) {
     return;
   }
 
-  // 1. Kiem tra neu la goi du lieu telemetry Farming Simulator 25
-  if (doc.containsKey("fs25") || doc["game"] == "fs25" || doc.containsKey("speed") || doc.containsKey("pto") || doc.containsKey("bcn")) {
-    JsonObject d = doc.containsKey("fs25") ? doc["fs25"].as<JsonObject>() : doc.as<JsonObject>();
-    Fs25TelemetryData data;
-    data.connected = true;
-    data.speed = d["speed"] | 0;
-    data.maxSpeed = d["maxSpd"] | 50;
-    data.rpm = d["rpm"] | 0;
-    data.rpmMax = d["rpmMax"] | 2200;
-    data.cruiseSpeed = d["cru"] | 0;
-    data.cruiseOn = d["cruOn"] | false;
-    data.fuelPct = d["fuel"] | 100;
-    data.fillLevelPct = d["fill"] | 0;
-    data.damagePct = d["dmg"] | 0;
-    data.operatingHours = d["hr"] | 0.0f;
-    data.beacon = d["bcn"] | false;
-    data.workLight = d["wrk"] | false;
-    data.blinkerL = d["turnL"] | false;
-    data.blinkerR = d["turnR"] | false;
-    data.implementLowered = d["down"] | false;
-    data.implementTurnedOn = d["pto"] | false;
-    data.pipeUnfolded = d["pipe"] | false;
-    data.motorRunning = d["motor"] | true;
-    display.updateFs25Telemetry(data);
-    return;
-  }
-
-  // 2. Kiem tra neu la goi du lieu telemetry game ETS2 / ATS tu Desktop Miu
+  // 1. Uu tien tuyet doi: Kiem tra neu la goi du lieu telemetry game ETS2 / ATS tu Desktop Miu
   if (doc["game"] == "ets2" || doc.containsKey("spd") || doc.containsKey("gear") || doc.containsKey("truck")) {
     Ets2TelemetryData t;
     t.connected = doc.containsKey("conn") ? (doc["conn"].as<int>() != 0) : true;
@@ -121,6 +94,8 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.wipers = (doc["wip"].as<int>() != 0);
     t.beacon = (doc["bcn"].as<int>() != 0);
     t.motorBrake = (doc["mbrk"].as<int>() != 0);
+    t.gameHour = doc["gh"] | -1;
+    t.gameMin = doc["gm"] | -1;
     if (doc.containsKey("evt")) {
       const char* ev = doc["evt"];
       if (ev && strlen(ev) > 0) {
@@ -131,6 +106,33 @@ void UsbLink::processJson(const char* json, size_t len) {
     }
     t.lastUpdateMs = millis();
     display.updateGameTelemetry(t);
+    return;
+  }
+
+  // 2. Kiem tra neu la goi du lieu telemetry Farming Simulator 25
+  if (doc["game"] == "fs25" || doc.containsKey("fs25") || doc.containsKey("pto") || doc.containsKey("pipe") || doc.containsKey("maxSpd")) {
+    JsonObject d = doc.containsKey("fs25") ? doc["fs25"].as<JsonObject>() : doc.as<JsonObject>();
+    Fs25TelemetryData data;
+    data.connected = true;
+    data.speed = d["speed"] | 0;
+    data.maxSpeed = d["maxSpd"] | 50;
+    data.rpm = d["rpm"] | 0;
+    data.rpmMax = d["rpmMax"] | 2200;
+    data.cruiseSpeed = d["cru"] | 0;
+    data.cruiseOn = d["cruOn"] | false;
+    data.fuelPct = d["fuel"] | 100;
+    data.fillLevelPct = d["fill"] | 0;
+    data.damagePct = d["dmg"] | 0;
+    data.operatingHours = d["hr"] | 0.0f;
+    data.beacon = d["bcn"] | false;
+    data.workLight = d["wrk"] | false;
+    data.blinkerL = d["turnL"] | false;
+    data.blinkerR = d["turnR"] | false;
+    data.implementLowered = d["down"] | false;
+    data.implementTurnedOn = d["pto"] | false;
+    data.pipeUnfolded = d["pipe"] | false;
+    data.motorRunning = d["motor"] | true;
+    display.updateFs25Telemetry(data);
     return;
   }
 
