@@ -684,9 +684,10 @@
   - Daemon kết nối Serial: PASS (`COM5` connected, PID 11136, rate 30 FPS, tự động tái kết nối khi cắm/rút USB).
   - MCP Server Self-Test: PASS (`esp32_get_status` báo `ONLINE`, `esp32_get_telemetry` đọc chuẩn, `esp32_get_logs` lấy đúng tail log, `esp32_send_command` và `esp32_trigger_event` chuyển tiếp lệnh thành công).
   - Tài liệu `README.md`: PASS (Đầy đủ, chuẩn markdown, hướng dẫn chi tiết).
+  - Khắc phục lỗi commit: PASS (Thêm `tools/telemetry_state.json*` và `tools/mcp_command.txt` vào `.gitignore` để không bị daemon ghi đè liên tục khi stage; đã tạo thành công commit `c8dd1f3`).
 - **Vấn đề còn tồn tại:** Không có.
 - **Trạng thái:** PASS
-- **Bước tiếp theo:** Người dùng chỉ cần bật máy tính và mở game Euro Truck Simulator 2; hệ thống sẽ tự động hoạt động 100% không cần bất kỳ thao tác thủ công nào.
+- **Bước tiếp theo:** Người dùng chỉ cần bật máy tính và mở game Euro Truck Simulator 2; hệ thống sẽ tự động hoạt động 100% không cần bất kỳ thao tác thủ công nào. (Tùy chọn: `git push` lên GitHub nếu muốn).
 
 
 
