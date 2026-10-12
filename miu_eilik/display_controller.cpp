@@ -657,6 +657,9 @@ void DisplayManager::updateGameTelemetry(const Ets2TelemetryData& data) {
     if (mode == DISP_GAME) {
       mode = DISP_EYES;
       gameModeLocked = false;
+      gameTelem.loading = false;
+      gameTelem.connected = false;
+      ets2SplashUntilMs = 0;
       LOG_PRINTLN(F("[DISPLAY] Game ETS2 chua ket noi hoac da thoat -> Tro ve Mat RoboEyes"));
     }
   }
@@ -731,17 +734,22 @@ void DisplayManager::drawEventToast() {
 
 void DisplayManager::drawGameDashboard() {
   unsigned long now = millis();
-  if (gameTelem.loading || now < ets2SplashUntilMs) {
-    drawEts2SplashScreen();
-    return;
-  }
 
-  bool isTimedOut = (gameLastPacketMs == 0 || (now - gameLastPacketMs > 8000));
-
-  // Neu het timeout hoac chua ket noi -> tro ve ngay Mat RoboEyes
+  // 1. Uu tien kiem tra Timeout va ket noi truoc tien:
+  // Neu mat goi tin qua 1.5s hoac game bao chua ket noi -> thoat ngay ve Mat RoboEyes
+  bool isTimedOut = (gameLastPacketMs == 0 || (now - gameLastPacketMs > 1500));
   if (isTimedOut || !gameTelem.connected) {
     mode = DISP_EYES;
     gameModeLocked = false;
+    gameTelem.loading = false;
+    gameTelem.connected = false;
+    ets2SplashUntilMs = 0;
+    return;
+  }
+
+  // 2. Neu game dang ket noi nhung dang o man hinh loading / intro:
+  if (gameTelem.loading || now < ets2SplashUntilMs) {
+    drawEts2SplashScreen();
     return;
   }
 
@@ -1097,8 +1105,12 @@ void DisplayManager::update() {
   updateClock();
 
   if (mode == DISP_STREAM && (now - streamLastMs) > 2000) mode = DISP_EYES;
-  if (mode == DISP_GAME && !gameModeLocked && (gameLastPacketMs > 0) && (now - gameLastPacketMs > 10000)) {
-    mode = DISP_EYES; // Tu dong tra ve robot de ban khi ngung choi game qua 10s
+  if (mode == DISP_GAME && (gameLastPacketMs == 0 || (now - gameLastPacketMs > 1500))) {
+    mode = DISP_EYES; // Tu dong tra ve robot RoboEyes khi ngung nhan telemetry qua 1.5s
+    gameModeLocked = false;
+    gameTelem.loading = false;
+    gameTelem.connected = false;
+    ets2SplashUntilMs = 0;
   }
 
   switch (mode) {

@@ -136,23 +136,76 @@ class Ets2SharedMemoryReader:
         self.k32.MapViewOfFile.restype = ctypes.c_void_p
         self.k32.CloseHandle.argtypes = [wintypes.HANDLE]
         self.k32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
+        self.user32 = ctypes.windll.user32 if sys.platform == "win32" else None
         self.hMap = None
         self.pBuf = None
         self.hMapScs = None
         self.pBufScs = None
         self.ets2_pid: Optional[int] = None
+        self._last_sim_tick: int = 0
+        self._last_sim_tick_time: float = 0.0
+        self._last_proc_check: float = 0.0
+        self._last_proc_running: bool = False
 
     def _find_ets2_pid(self) -> Optional[int]:
         if not _PSUTIL_OK:
             return None
         try:
             for p in psutil.process_iter(['pid', 'name']):
-                pname = (p.info['name'] or '').lower()
-                if pname in ('eurotrucks2.exe', 'amtrucks.exe'):
-                    return p.info['pid']
+                try:
+                    pname = (p.info['name'] or '').lower()
+                    if pname in ('eurotrucks2.exe', 'amtrucks.exe'):
+                        return p.info['pid']
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
         except Exception:
             pass
         return None
+
+    def _is_ets2_process_running(self) -> bool:
+        """Kiem tra da tang xem tien trinh game ETS2 / ATS con dang chay tren Windows hay khong."""
+        now = time.time()
+        # Cache ket qua trong 0.2 giay de giu hieu nang cao 30-60 FPS
+        if now - self._last_proc_check < 0.2:
+            return self._last_proc_running
+
+        self._last_proc_check = now
+
+        # 1. Kiem tra theo PID da luu
+        if _PSUTIL_OK and self.ets2_pid:
+            try:
+                if psutil.pid_exists(self.ets2_pid):
+                    self._last_proc_running = True
+                    return True
+                else:
+                    self.ets2_pid = None
+            except Exception:
+                self.ets2_pid = None
+
+        # 2. Kiem tra truc tiep Windows API User32 FindWindowW (cuc nhanh < 1us, khong bi chan boi quyen Admin)
+        if self.user32:
+            try:
+                if self.user32.FindWindowW("prism_subsys", None) != 0:
+                    self._last_proc_running = True
+                    return True
+                if self.user32.FindWindowW(None, "Euro Truck Simulator 2") != 0:
+                    self._last_proc_running = True
+                    return True
+                if self.user32.FindWindowW(None, "American Truck Simulator") != 0:
+                    self._last_proc_running = True
+                    return True
+            except Exception:
+                pass
+
+        # 3. Quet tien trinh qua psutil
+        pid = self._find_ets2_pid()
+        if pid:
+            self.ets2_pid = pid
+            self._last_proc_running = True
+            return True
+
+        self._last_proc_running = False
+        return False
 
     def _ensure_scs_telemetry(self):
         """Thu ket noi them vung nho Local\\SCSTelemetry de lay gia tri hop so dashboard chuan."""
@@ -165,35 +218,26 @@ class Ets2SharedMemoryReader:
                 pass
 
     def connect(self) -> bool:
+        # Neu game da thoat tren Windows -> lap tuc dong va giai phong vung nho Shared Memory
+        if not self._is_ets2_process_running():
+            if self.pBuf or self.hMap:
+                self.close()
+            return False
+
         if self.pBuf:
-            if _PSUTIL_OK and self.ets2_pid:
-                if not psutil.pid_exists(self.ets2_pid):
-                    self.close()
-                    return False
             self._ensure_scs_telemetry()
             return True
-        # File mapping name do ets2-telemetry-server.dll tao trong game (map 4096 de du het struct fields)
+
+        # File mapping name do ets2-telemetry-server.dll tao trong game
         self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
         if self.hMap:
             self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 4096)
             if self.pBuf:
-                self.ets2_pid = self._find_ets2_pid()
                 self._ensure_scs_telemetry()
                 return True
             self.k32.CloseHandle(self.hMap)
             self.hMap = None
 
-        # Neu chua mo duoc SHM (game dang khoi dong trong doan intro), kiem tra tien trinh eurotrucks2
-        if _PSUTIL_OK:
-            if self.ets2_pid and psutil.pid_exists(self.ets2_pid):
-                return True
-            now = time.time()
-            if now - getattr(self, "_last_pid_scan", 0.0) >= 0.5:
-                self._last_pid_scan = now
-                pid = self._find_ets2_pid()
-                if pid:
-                    self.ets2_pid = pid
-                    return True
         return False
 
     def close(self):
@@ -240,14 +284,16 @@ class Ets2SharedMemoryReader:
     # Offset 1008: float  navigationSpeedLimit (m/s)
 
     def read(self) -> Optional[Dict[str, Any]]:
+        # 1. Kiem tra tien trinh game: Neu game da thoat -> giai phong ngay SHM va tra ve None
+        if not self._is_ets2_process_running():
+            if self.pBuf or self.hMap:
+                self.close()
+            self.loading_start_time = 0.0
+            return None
+
         if not self.connect():
             return None
         try:
-            if _PSUTIL_OK and self.ets2_pid:
-                if not psutil.pid_exists(self.ets2_pid):
-                    self.close()
-                    return None
-
             # Tinh toan tien do loading % muot ma khi game dang o intro / loading
             if getattr(self, "loading_start_time", 0.0) == 0.0:
                 self.loading_start_time = time.time()
@@ -261,7 +307,11 @@ class Ets2SharedMemoryReader:
                 if self.hMap:
                     self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 4096)
                 if not self.pBuf:
-                    # Tra ve goi connected + loading kem load_pct tang deu de ESP32 hien thi Loading Splash Scania!
+                    # Chi tra ve goi loading neu tien trinh game THUC SU DANG CHAY tren Windows:
+                    if not self._is_ets2_process_running():
+                        self.close()
+                        self.loading_start_time = 0.0
+                        return None
                     return {
                         "game": "ets2",
                         "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
@@ -283,9 +333,28 @@ class Ets2SharedMemoryReader:
 
             raw = ctypes.string_at(self.pBuf, 2048)
 
+            # Kiem tra nhip tim simulation tick (offset 0):
+            sim_tick = struct.unpack_from("<I", raw, 0)[0]
+            paused = struct.unpack_from("<I", raw, 4)[0]
+            now = time.time()
+            if sim_tick != self._last_sim_tick:
+                self._last_sim_tick = sim_tick
+                self._last_sim_tick_time = now
+            elif paused == 0 and (now - self._last_sim_tick_time > 1.5):
+                # Tick dong bang qua 1.5s ma khong phai pause -> xac minh ngay xem game da bi tat dot ngot chua
+                self._last_proc_check = 0.0
+                if not self._is_ets2_process_running():
+                    self.close()
+                    self.loading_start_time = 0.0
+                    return None
+
             # Offset 8: pluginVersion (phai >= 1 neu DLL telemetry da duoc nap trong game)
             plugin_ver = struct.unpack_from("<I", raw, 8)[0]
             if plugin_ver < 1:
+                if not self._is_ets2_process_running():
+                    self.close()
+                    self.loading_start_time = 0.0
+                    return None
                 return {
                     "game": "ets2",
                     "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
@@ -304,9 +373,6 @@ class Ets2SharedMemoryReader:
                     "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
                     "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 }
-
-            # Offset 4: paused flag
-            paused = struct.unpack_from("<I", raw, 4)[0]
 
             # Offset 160: timeAbsolute (minutes elapsed in game world, non-zero = in-game)
             time_absolute = struct.unpack_from("<i", raw, 160)[0]
@@ -332,6 +398,10 @@ class Ets2SharedMemoryReader:
 
             # Neu game dang o man hinh menu / login TruckersMP / chon server / loading map:
             if not is_driving:
+                if not self._is_ets2_process_running():
+                    self.close()
+                    self.loading_start_time = 0.0
+                    return None
                 return {
                     "game": "ets2",
                     "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
@@ -1114,11 +1184,15 @@ class Ets2DesktopCompanion:
                 return shm_data
 
         # 2. Fallback sang HTTP Telemetry Server (Port 25555 cho ETS2)
-        raw = self.fetch_server_telemetry()
-        if raw:
-            self.server_ok = True
-            self.source_name = f"HTTP REST ({self.server_url})"
-            return self.extract_telemetry_payload(raw)
+        # Chi fallback neu tien trinh game ETS2/ATS thuc su dang chay tren Windows
+        if self.shm_reader and self.shm_reader._is_ets2_process_running():
+            raw = self.fetch_server_telemetry()
+            if raw:
+                payload = self.extract_telemetry_payload(raw)
+                if payload.get("conn") == 1:
+                    self.server_ok = True
+                    self.source_name = f"HTTP REST ({self.server_url})"
+                    return payload
 
         self.server_ok = False
         self.source_name = "WAITING"
@@ -1364,8 +1438,8 @@ class Ets2DesktopCompanion:
             "gh": gh,
             "gm": gm,
             "conn": 1 if game.get("connected", False) else 0,
-            "load": 0 if game.get("connected", False) else 1,
-            "load_pct": 100 if game.get("connected", False) else 50,
+            "load": 0 if game.get("connected", False) else (1 if (self.shm_reader and self.shm_reader._is_ets2_process_running()) else 0),
+            "load_pct": 100 if game.get("connected", False) else (50 if (self.shm_reader and self.shm_reader._is_ets2_process_running()) else 0),
             "pause": 1 if game.get("paused", False) else 0,
             # Ban do & Lo trinh
             "route": route_str,
@@ -1527,11 +1601,14 @@ class Ets2DesktopCompanion:
                         self.dump_state(payload)
                         self.render_console_dashboard(payload)
                     else:
-                        # Game chua bat hoac chua ket noi
+                        # Game chua bat hoac chua ket noi / da thoat
                         self.dump_state(None)
                         if self.game_connected_prev:
                             print("\n[GAME DISCONNECTED] Game da thoat -> Chuyen robot ve mat RoboEyes")
-                            self.send_command("MODE=EYES")
+                            for _ in range(3):
+                                self.send_command("MODE=EYES")
+                                time.sleep(0.02)
+                            self.send_telemetry_packet({"game": "ets2", "conn": 0, "load": 0, "load_pct": 0})
                             self.game_connected_prev = False
 
                         sys.stdout.write(

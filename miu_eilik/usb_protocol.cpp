@@ -177,8 +177,18 @@ void UsbLink::processJson(const char* json, size_t len) {
             display.mode = DISP_GAME;
             display.gameModeLocked = true;
             display.triggerEts2Splash();
+          } else if (mVal == "EYES" || mVal == "ROBOEYES") {
+            display.mode = DISP_EYES;
+            display.gameModeLocked = false;
+            display.gameTelem.loading = false;
+            display.gameTelem.connected = false;
+            display.ets2SplashUntilMs = 0;
+            emojiController.Center();
           } else {
             display.gameModeLocked = false;
+            display.gameTelem.loading = false;
+            display.gameTelem.connected = false;
+            display.ets2SplashUntilMs = 0;
             uint32_t mh = hashKey(kv.value().as<const char*>());
             switch (mh) {
               case ModeHash::MODE_SLEEP:   emojiController.Sleep(); break;

@@ -95,6 +95,9 @@ void processSerialLine(String line) {
   } else if (line == "MODE=EYES" || line == "mode=eyes" || line == "eyes") {
     display.mode = DISP_EYES;
     display.gameModeLocked = false;
+    display.gameTelem.loading = false;
+    display.gameTelem.connected = false;
+    display.ets2SplashUntilMs = 0;
     LOG_PRINTLN(F("[MODE] Da chuyen sang RoboEyes"));
   } else if (line == "MODE=CLOCK" || line == "mode=clock" || line == "clock") {
     display.mode = DISP_CLOCK;

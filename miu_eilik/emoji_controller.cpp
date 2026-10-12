@@ -258,9 +258,12 @@ void EmojiController::ExecuteCommand(String cmd) {
         HeadShake();
     } else if (cmd == "roll" || cmd == "head_roll") {
         HeadRoll();
-    } else if (cmd == "disp_eyes" || cmd == "eyes") {
+    } else if (cmd == "disp_eyes" || cmd == "eyes" || cmd == "MODE=EYES" || cmd == "mode=eyes") {
         display.mode = DISP_EYES;
         display.gameModeLocked = false;
+        display.gameTelem.loading = false;
+        display.gameTelem.connected = false;
+        display.ets2SplashUntilMs = 0;
         display.notifyPresence();
         roboEyes.setWidth(36, 36);
         roboEyes.setHeight(36, 36);
