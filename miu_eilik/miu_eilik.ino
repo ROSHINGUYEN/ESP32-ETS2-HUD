@@ -124,6 +124,8 @@ void processSerialLine(String line) {
       String jsonStr = line.substring(startIdx);
       usb.processJson(jsonStr.c_str(), jsonStr.length());
     }
+  } else {
+    emojiController.ExecuteCommand(line);
   }
 }
 
@@ -186,6 +188,7 @@ void setup() {
 
   gStateMutex = xSemaphoreCreateMutex();
   display.begin();
+  emojiController.begin();
 
   // Khoi dong nhanh man hinh OLED
   LOG_PRINTLN(F("[BOOT] Khoi dong he thong MIU-ETS2 (Telemetry Display)..."));

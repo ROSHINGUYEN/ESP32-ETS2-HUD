@@ -125,8 +125,8 @@ void DisplayManager::begin() {
   }
 
   roboEyes.begin(SCREEN_W, SCREEN_H, 30);
-  roboEyes.setAutoblinker(1, 3, 2);
-  roboEyes.setIdleMode(1, 2, 2);
+  roboEyes.setAutoblinker(false); // Tat autoblinker de Desktop Pet AI dieu khien bieu cam
+  roboEyes.setIdleMode(false);    // Tat idleMode tu dong de khong lam giat toa do mat
   roboEyes.setMood(MOOD_DEFAULT);
   roboEyes.setWidth(36, 36);
   roboEyes.setHeight(36, 36);
@@ -468,6 +468,139 @@ void DisplayManager::drawClock() {
 }
 
 void DisplayManager::drawEyes() {
+  // =====================================================================
+  // DESKTOP PET AI — Biểu cảm thông minh theo giờ & trạng thái
+  // Luôn dùng PlayAnimation() để tránh race condition I2C
+  // =====================================================================
+  unsigned long now = millis();
+
+  // Chọn giờ hiển thị: ưu tiên giờ game nếu đang kết nối, fallback đồng hồ thật
+  int h = (gameTelem.connected && gameTelem.gameHour >= 0) ? gameTelem.gameHour : clockHour;
+
+  // --- Trạng thái Idle: thời gian kể từ lần tương tác cuối ---
+  unsigned long idleMs = (lastPresence > 0) ? (now - lastPresence) : 0;
+
+  // --- Biến trạng thái nội bộ: tránh spam animation ---
+  static bool        wasSleeping     = false;   // đang trong trạng thái ngủ
+  static bool        wakeUpDone      = false;   // đã phát animation thức giấc chưa
+  static uint8_t     lastMoodApplied = 255;     // mood cuối đã gắn vào RoboEyes
+  static unsigned long lastPetActMs  = 0;       // lần phát animation ngẫu nhiên cuối
+  static unsigned long lastMoodSetMs = 0;       // lần set mood cuối
+
+  // ----------------------------------------------------------------
+  // 1. SLEEP: Idle > 5 phút → ngủ
+  // ----------------------------------------------------------------
+  const unsigned long SLEEP_AFTER_MS = 5UL * 60UL * 1000UL; // 5 phút
+
+  if (idleMs > SLEEP_AFTER_MS) {
+    if (!wasSleeping) {
+      // Lần đầu vào ngủ: phát animation SLEEP một lần
+      emojiController.PlayAnimation(AnimationType::SLEEP);
+      roboEyes.setMood(MOOD_TIRED);
+      wasSleeping    = true;
+      wakeUpDone     = false;
+      lastMoodApplied = MOOD_TIRED;
+    }
+    // Khi đang ngủ: chỉ vẽ mắt, không làm gì thêm
+    roboEyes.drawEyes();
+    return;
+  }
+
+  // ----------------------------------------------------------------
+  // 2. WAKE-UP: Vừa thoát ngủ (có tương tác mới)
+  // ----------------------------------------------------------------
+  if (wasSleeping && !wakeUpDone) {
+    emojiController.PlayAnimation(AnimationType::WAKEUP);
+    // Giờ sáng → vui; giờ khác → default
+    if (h >= 6 && h < 10) {
+      emojiController.PlayAnimation(AnimationType::HAPPY);
+    } else {
+      emojiController.PlayAnimation(AnimationType::STRETCH);
+    }
+    wasSleeping  = false;
+    wakeUpDone   = true;
+    lastPetActMs = now;
+    lastMoodSetMs = now;
+  }
+
+  if (wakeUpDone && (now - lastPetActMs > 3000)) {
+    wakeUpDone = false; // Reset sau 3s để cho phép random act lại
+  }
+
+  // ----------------------------------------------------------------
+  // 3. MOOD THEO GIỜ: Cập nhật mood nền mỗi 60 giây
+  //    00-05: Midnight → TIRED (mắt nặng nề)
+  //    06-09: Morning  → HAPPY (tươi tắn đầu ngày)
+  //    10-17: Daytime  → DEFAULT (bình thường hoạt động)
+  //    18-21: Evening  → CONFUSED / THINKING (mệt cuối ngày)
+  //    22-23: Night    → TIRED (buồn ngủ)
+  // ----------------------------------------------------------------
+  const unsigned long MOOD_UPDATE_INTERVAL = 60000UL; // 60s
+  if (now - lastMoodSetMs >= MOOD_UPDATE_INTERVAL) {
+    lastMoodSetMs = now;
+    uint8_t targetMood;
+    if      (h >= 0  && h <  6)  targetMood = MOOD_TIRED;   // Đêm khuya
+    else if (h >= 6  && h < 10)  targetMood = MOOD_HAPPY;   // Sáng sớm
+    else if (h >= 10 && h < 18)  targetMood = MOOD_DEFAULT; // Ban ngày
+    else if (h >= 18 && h < 22)  targetMood = MOOD_DEFAULT; // Chiều tối
+    else                          targetMood = MOOD_TIRED;   // Đêm
+
+    if (targetMood != lastMoodApplied) {
+      roboEyes.setMood(targetMood);
+      lastMoodApplied = targetMood;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // 4. LIVELY DESKTOP PET AI: Phat bieu cam lien tuc moi 5 giay
+  // ----------------------------------------------------------------
+  const unsigned long ACT_INTERVAL_MS = 5000UL; // 5.0s mot bieu cam moi
+
+  // Lan dau boot: kich hoat ngay sau 1.5s de nguoi dung thay ngay lap tuc
+  bool shouldAct = (lastPetActMs == 0 && now >= 1500) ||
+                   (lastPetActMs > 0 && (now - lastPetActMs >= ACT_INTERVAL_MS));
+
+  if (!emojiController.IsBusy() && shouldAct) {
+    lastPetActMs = now;
+
+    // Kho bieu cam da dang 24 bieu cam truc quan song dong
+    const AnimationType petActs[] = {
+      AnimationType::HAPPY,        // 1. Mat cuoi hip cong luoi liem + rung rinh cuoi vui
+      AnimationType::WINK,         // 2. Nhay mat 1 ben tinh nghich (mat phai nhay)
+      AnimationType::SURPRISE,     // 3. Mat tron xoe to dung ngo ngac
+      AnimationType::CURIOUS,      // 4. Mat to mat nho liec trai phai to mo
+      AnimationType::CONFUSED,     // 5. Toat mo hoi roi tren tran + boi roi
+      AnimationType::EXCITED,      // 6. Hung khoi nhin len cuoi to
+      AnimationType::THINKING,     // 7. Nheo mat nhin goc tren suy nghi
+      AnimationType::ANGER,        // 8. Mat quac gian doi dang yeu
+      AnimationType::LOVING,       // 9. Chop mat kep au yem
+      AnimationType::HEAD_ROLL,    // 10. Dao mat tron 360 do
+      AnimationType::STRETCH,      // 11. Vuon vai ngam nghia
+      AnimationType::SHY,          // 12. Nhin xuong ben len ngai ngung
+      AnimationType::WINK_LEFT,    // 13. Nhay mat trai tinh nghich
+      AnimationType::DIZZY,        // 14. Chong mat quay cuong rung giat
+      AnimationType::HEART_PULSE,  // 15. Trai tim dap phap phong yeu thuong
+      AnimationType::SKEPTICAL,    // 16. Nghi ngo ban tin ban nghi liec ngang
+      AnimationType::SNEAKY,       // 17. Len lut rinh rap lui duoi day man hinh
+      AnimationType::BORED,        // 18. Chan nan tho dai dao mat len troi
+      AnimationType::SMUG,         // 19. Tu dac nhin xech len cuoi khay nhay mat
+      AnimationType::PANIC,        // 20. Hoang loan tot do toat mo hoi rung giat
+      AnimationType::SLEEPY_NOD,   // 21. Gat gu ngu quen roi giat minh bung tinh
+      AnimationType::DANCE,        // 22. Lac lu nhay mua 4 huong nhan nha
+      AnimationType::RADAR,        // 23. Quet radar sci-fi mat phang quet ngang
+      AnimationType::YAWN          // 24. Ngap dai buon ngu ngap tron xoe
+    };
+    const uint8_t count = sizeof(petActs) / sizeof(petActs[0]);
+    static uint8_t actIdx = 0;
+    AnimationType act = petActs[actIdx % count];
+    actIdx = (actIdx + 1) % count;
+
+    emojiController.PlayAnimation(act);
+  }
+
+  // ----------------------------------------------------------------
+  // 5. VẼ MẮT (luôn gọi ở cuối)
+  // ----------------------------------------------------------------
   roboEyes.drawEyes();
 }
 
@@ -1140,8 +1273,6 @@ void DisplayManager::drawGameDashboard() {
 }
 
 void DisplayManager::update() {
-  if (emojiController.IsBusy() && (mode == DISP_EYES || mode == DISP_CLOCK)) return;
-
   unsigned long now = millis();
   unsigned long dt = (lastFrame > 0) ? (now - lastFrame) : 33;
   lastFrame = now;

@@ -34,11 +34,23 @@ enum class AnimationType {
     LOVING,       // 喜爱 (Yêu thích)
     THINKING,     // 思考 (Suy nghĩ)
     // --- Desktop Pet Extensions ---
-    WINK,         // Nháy mắt một bên
+    WINK,         // Nháy mắt một bên (phải)
     EXCITED,      // Hứng khởi - mở to rồi cười
     CURIOUS,      // Tò mò - nhìn lên trái rồi nghiêng đầu
     SHY,          // Ngại ngùng - nhìn xuống rồi blink
     STRETCH,      // Vươn vai - nhìn lên rồi lắc đầu
+    WINK_LEFT,    // Nháy mắt trái tinh nghịch
+    DIZZY,        // Chóng mặt - quay đảo + rung giật bối rối
+    HEART_PULSE,  // Trái tim đập - co giãn mắt cười phập phồng
+    SKEPTICAL,    // Nghi ngờ - mắt nheo mắt tròn liếc xéo
+    SNEAKY,       // Lén lút rình rập - nheo mắt nhìn dưới đáy
+    BORED,        // Chán nản ngao ngán - đảo mắt lên trời rồi cụp
+    SMUG,         // Tự đắc đắc chí - nhìn lên cười khẩy nháy mắt
+    PANIC,        // Hoảng loạn cực độ - mắt to tròn + rung giật + toát mồ hôi
+    SLEEPY_NOD,   // Gật gù ngủ quên - cụp mắt nhắm nghiền rồi giật mình bừng tỉnh
+    DANCE,        // Lắc lư nhảy múa - nhún nhảy 4 hướng nhịp nhàng
+    RADAR,        // Quét radar sci-fi - mắt phẳng quét ngang màn hình
+    YAWN,         // Ngáp dài buồn ngủ - trợn to rồi từ từ nhắm lim dim
     RANDOM        // 随机动画 (Ngẫu nhiên tự hành)
 };
 
@@ -75,6 +87,19 @@ public:
     void Laughing();
     void Loving();
     void Center();
+
+    void WinkLeft();
+    void Dizzy();
+    void HeartPulse();
+    void Skeptical();
+    void Sneaky();
+    void Bored();
+    void Smug();
+    void Panic();
+    void SleepyNod();
+    void Dance();
+    void Radar();
+    void Yawn();
 
     void RandomAct();
     void Update();
