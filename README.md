@@ -10,12 +10,13 @@ Dự án tích hợp cơ chế **Tự động chạy ngầm cùng Windows (0-Tou
 
 ```
   ┌─────────────────────────────────────────────────────────────┐
-  │  [!] 80     D12     14:25   │  Biển báo tốc độ 80 (chớp khi quá tốc)
-  │  ─────────────────────────  │  Hộp số D12 | Giờ game 14:25
-  │          85 km/h            │  Tốc độ số to nét Font 3 (21x16 px)
-  │  ■■■■■■■■■■■■■■■■ [1250]    │  RPM có dải xanh kinh tế (1000-1500)
-  │  F: 92% (778L)  T:2%  C:0%  │  Xăng % & Lít | Độ bền xe & Hàng hóa
-  │  < ETA:140km >  WIP  RET:2  │  Xi-nhan | Cự ly | Gạt mưa | Retarder
+  │  <  D  WIP         14:25         R2  CC  >  │  Header: Xi-nhan | Giờ | Retarder | CC
+  │  ─────────────────────────────────────────  │  ───────────────────────────────────
+  │    (80)               85           [ D12 ]  │  Trái: Biển báo [80] (chớp quá tốc)
+  │    C:70            ── km/h ──       [ P ]   │  Giữa: Tốc độ số to nét (Font 3)
+  │  ─────────────────────────────────────────  │  Phải: Cấp số chuẩn Taplo | Phanh [P]
+  │  F: [■■■■] 92%       R: [■■■■|■| ]          │  Thước Xăng % & Thước RPM dải kinh tế
+  │  T:2%       C:0%       778L          140km  │  Độ bền xe | Hàng hóa | Lít dầu | ETA
   └─────────────────────────────────────────────────────────────┘
 ```
 
