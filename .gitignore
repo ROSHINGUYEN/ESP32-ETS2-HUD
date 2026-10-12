@@ -6,7 +6,11 @@ build/
 *.bin
 *.elf
 *.map
-*.gitignore
+
+# Internal AI Workspace & Progress Reports (Khong commit len GitHub)
+WORK_REPORT.md
+AGENTS.md
+.agents/
 
 # OS files
 Thumbs.db

@@ -86,7 +86,7 @@ Bo mạch sử dụng: **ESP32-S3-WROOM-1 (N16R8: 16MB Flash, 8MB Octal PSRAM)**
 
 ### Cách 1: Kích Hoạt Tự Động Chạy Cùng Windows (Khuyên Dùng)
 Chỉ cần bấm 1 lần duy nhất, máy tính sẽ tự động chạy ngầm vĩnh viễn:
-1. Nhấp đúp vào file: **`BAT_TU_DONG_CHAY_NGAM.bat`**
+1. Nhấp đúp vào file: **`scripts/BAT_TU_DONG_CHAY_NGAM.bat`**
 2. Cửa sổ báo `[OK] Da cai dat vao Windows Startup thanh cong!`
 3. Xong! Từ nay mỗi khi bật máy tính Windows:
    - Phần mềm cầu nối tự động chạy ngầm hoàn toàn.
@@ -95,10 +95,10 @@ Chỉ cần bấm 1 lần duy nhất, máy tính sẽ tự động chạy ngầm
 
 ### Cách 2: Tắt Chế Độ Tự Động Chạy Ngầm
 Nếu muốn tắt hoặc gỡ bỏ khỏi Windows Startup:
-- Nhấp đúp vào file: **`TAT_TU_DONG_CHAY_NGAM.bat`**
+- Nhấp đúp vào file: **`scripts/TAT_TU_DONG_CHAY_NGAM.bat`**
 
 ### Cách 3: Chạy Thủ Công Có Cửa Sổ Console (Để Xem Dashboard Trên Màn Hình Máy Tính)
-- Nhấp đúp vào: **`CHAY_DASHBOARD_ETS2.bat`**
+- Nhấp đúp vào: **`scripts/CHAY_DASHBOARD_ETS2.bat`**
 - Terminal sẽ hiển thị thanh dashboard ASCII thời gian thực:
   ```
   |   D12   | SPD:  85 km/h [80] ! OVER | RPM: 1250 | FUEL: 92% (778L) | TRK: 2% | CRG: 0% | ETA: 140km | WIP RET:2 | TX: 30.0 FPS
