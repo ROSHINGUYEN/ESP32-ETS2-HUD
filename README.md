@@ -1,6 +1,6 @@
-# MIU-ETS2 — ESP32 GAME TELEMETRY & DIGITAL COCKPIT DISPLAY
+# ESP32-ETS2-HUD — SIM RACING & DIGITAL COCKPIT DISPLAY
 
-> **Hệ thống Taplo Buồng Lái Kỹ Thuật Số (Digital Cockpit)** chuyên dụng render và hiển thị dữ liệu telemetry thời gian thực cho **Euro Truck Simulator 2 (ETS2)** & **American Truck Simulator (ATS)** trên vi điều khiển **ESP32-S3-WROOM-1 (N16R8)** với màn hình OLED 128x64.
+> **Hệ thống Màn Hình Buồng Lái Kỹ Thuật Số (Sim Racing Cockpit HUD)** chuyên dụng render và hiển thị dữ liệu telemetry thời gian thực cho **Euro Truck Simulator 2 (ETS2 & TruckersMP)** và **American Truck Simulator (ATS)** trên vi điều khiển **ESP32-S3 (N16R8)** với màn hình OLED 128x64.
 
 ---
 
@@ -339,4 +339,4 @@ E:\MIU_EILIK_ESP32-S3\
 - Mọi thư viện của bên thứ ba được giữ nguyên bản quyền thuộc về các tác giả gốc tương ứng theo giấy phép mã nguồn mở quy định.
 
 ---
-**Tác giả & Phát triển: ROSHINGUYEN — Hệ Sinh Thái MIU-ETS2 Game Telemetry & Display Companion (2026)**
+**Tác giả & Phát triển: ROSHINGUYEN — Hệ Sinh Thái ESP32-ETS2-HUD Sim Racing & Display Companion (2026)**
