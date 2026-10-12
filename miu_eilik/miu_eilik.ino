@@ -43,14 +43,6 @@ void taskDisplay(void*) {
   }
 }
 
-void taskBrain(void*) {
-  TickType_t last = xTaskGetTickCount();
-  while (true) {
-    emojiController.Update();
-    vTaskDelayUntil(&last, pdMS_TO_TICKS(50));
-  }
-}
-
 // =====================================================================================
 // XỬ LÝ LỆNH SERIAL (ASCII TEXT & JSON TAIBAI)
 // =====================================================================================
@@ -95,38 +87,6 @@ void processSerialLine(String line) {
       LOG_PRINTLN(F("[NTP] Sai format. Su dung: NTPSET=SSID,PASS"));
     }
 #endif
-  } else if (line.startsWith("ACT=") || line.startsWith("ACT ")) {
-    String actStr = line.substring(4);
-    actStr.trim();
-    LOG_PRINTF("[ACT] Nhan lenh hanh dong: %s\n", actStr.c_str());
-    async_sequent_act(actStr);
-  } else if (line.startsWith("AUTOTIME=")) {
-    int sec = line.substring(9).toInt();
-    if (sec >= 4 && sec <= 600) {
-      act_interval = sec * 1000UL;
-      emojiController.SetAutoInterval(act_interval);
-      LOG_PRINTF("[ACT] Da cai thoi gian nghi: %d giay\n", sec);
-    }
-#if ENABLE_WIFI
-  } else if (line.startsWith("ETS2IP=")) {
-    String ip = line.substring(7);
-    ip.trim();
-    if (ip == "OFF" || ip == "0") {
-      ets2Wifi.setEnabled(false);
-      LOG_PRINTLN(F("[ETS2 WIFI] Da tat keo telemetry qua WiFi."));
-    } else {
-      ets2Wifi.setServer(ip, true);
-      LOG_PRINTF("[ETS2 WIFI] Da bat keo du lieu tu: %s\n", ets2Wifi.serverIp.c_str());
-    }
-  } else if (line == "ETS2WIFI=ON" || line == "ETS2WIFI=1") {
-    ets2Wifi.setEnabled(true);
-  } else if (line == "ETS2WIFI=OFF" || line == "ETS2WIFI=0") {
-    ets2Wifi.setEnabled(false);
-  } else if (line == "ETS2?") {
-    LOG_PRINTF("[ETS2] IP=%s, Enabled=%d, Status=%s\n",
-               ets2Wifi.serverIp.c_str(), ets2Wifi.enabled,
-               display.gameTelem.connected ? "CONNECTED" : "DISCONNECTED");
-#endif
   } else if (line == "MODE=GAME" || line == "MODE=ETS2" || line == "mode=game" || line == "game") {
     display.mode = DISP_GAME;
     display.gameModeLocked = true;
@@ -140,6 +100,10 @@ void processSerialLine(String line) {
     display.mode = DISP_CLOCK;
     display.gameModeLocked = false;
     LOG_PRINTLN(F("[MODE] Da chuyen sang Clock"));
+  } else if (line == "RESET" || line == "REBOOT" || line == "restart") {
+    LOG_PRINTLN(F("[SYS] Lenh khoi dong lai he thong..."));
+    delay(100);
+    ESP.restart();
   } else if (line.startsWith("ETS2=") || line.startsWith("ETS2:") ||
              (line.indexOf('{') >= 0 && (line.indexOf("\"game\"") >= 0 || line.indexOf("\"spd\"") >= 0 || line.indexOf("\"gear\"") >= 0))) {
     int startIdx = line.indexOf('{');
@@ -147,9 +111,6 @@ void processSerialLine(String line) {
       String jsonStr = line.substring(startIdx);
       usb.processJson(jsonStr.c_str(), jsonStr.length());
     }
-  } else {
-    // Chuyển toàn bộ các lệnh còn lại (motion, servo, pin, config) sang EmojiController
-    emojiController.ExecuteCommand(line);
   }
 }
 
@@ -162,7 +123,17 @@ static void checkSerialCommands() {
     if (c == '\n') {
       s0Buf[s0Len] = '\0';
       if (s0Len > 0) {
-        processSerialLine(String(s0Buf));
+        // Toi uu hoa Zero-Allocation: Telemetry goi thang vao processJson khong tao String Heap
+        if (strncmp(s0Buf, "ETS2=", 5) == 0 || strncmp(s0Buf, "ETS2:", 5) == 0) {
+          const char* pJson = strchr(s0Buf, '{');
+          if (pJson) {
+            usb.processJson(pJson, strlen(pJson));
+          }
+        } else if (s0Buf[0] == '{' && (strstr(s0Buf, "\"spd\"") || strstr(s0Buf, "\"gear\"") || strstr(s0Buf, "\"game\""))) {
+          usb.processJson(s0Buf, s0Len);
+        } else {
+          processSerialLine(String(s0Buf));
+        }
       }
       s0Len = 0;
     } else if (c != '\r') {
@@ -178,34 +149,33 @@ static void checkSerialCommands() {
 // =====================================================================================
 
 void setup() {
-  Serial0.setRxBufferSize(1024);
-  Serial0.begin(115200);
-  Serial.begin(115200);
-  delay(300);
+  Serial0.setRxBufferSize(2048);
+  Serial0.begin(460800);
+  Serial.begin(460800);
+  delay(150);
 
   LOG_PRINTLN(F("\n====================================================="));
-  LOG_PRINTLN(F(" MIU EILIK - TAIBAI EMOJI HARDWARE ARCHITECTURE       "));
-  LOG_PRINTLN(F(" OLED ETS2 Dashboard | Dual-core FreeRTOS            "));
+  LOG_PRINTLN(F(" MIU EILIK - HIGH PERFORMANCE ETS2 DASHBOARD         "));
+  LOG_PRINTLN(F(" 460800 Baud Link | Zero-Allocation | FreeRTOS Dual "));
   LOG_PRINTLN(F("====================================================="));
 
   gStateMutex = xSemaphoreCreateMutex();
   display.begin();
 
   // Khoi dong nhanh man hinh OLED
-  LOG_PRINTLN(F("[BOOT] Khoi dong he thong Miu Eilik (OLED Dashboard)..."));
+  LOG_PRINTLN(F("[BOOT] Khoi dong he thong Miu Eilik (ETS2 Cockpit Dashboard)..."));
   oled.clearDisplay();
   oled.setTextSize(1);
   oled.setTextColor(SSD1306_WHITE);
   oled.setCursor(20, 15);
   oled.print(F("MIU EILIK READY"));
-  oled.setCursor(24, 32);
+  oled.setCursor(24, 30);
   oled.print(F("ETS2 COCKPIT"));
-  oled.setCursor(24, 46);
-  oled.print(F("DESKTOP COMPANION"));
+  oled.setCursor(16, 45);
+  oled.print(F("460800 BAUD LINK"));
   oled.display();
-  delay(100);
+  delay(300);
 
-  emojiController.begin();
   display.initClock();
 #if ENABLE_WIFI
   ntp.begin();
@@ -214,9 +184,8 @@ void setup() {
 
   xTaskCreatePinnedToCore(taskUsb,     "USB",     6144, NULL, 4, NULL, 0);
   xTaskCreatePinnedToCore(taskDisplay, "Display", 6144, NULL, 4, NULL, 1);
-  xTaskCreatePinnedToCore(taskBrain,   "Brain",   4096, NULL, 3, NULL, 1);
 
-  LOG_PRINTLN(F("[OK] All tasks started on 2 cores. System is ready!"));
+  LOG_PRINTLN(F("[OK] USB & Display tasks started on 2 cores. System ready at 460800 baud!"));
 }
 
 void loop() {

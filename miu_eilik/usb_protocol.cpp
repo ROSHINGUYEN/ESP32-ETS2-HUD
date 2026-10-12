@@ -61,7 +61,8 @@ void UsbLink::update() {
 }
 
 void UsbLink::processJson(const char* json, size_t len) {
-  StaticJsonDocument<2048> doc;
+  static StaticJsonDocument<2048> doc;
+  doc.clear();
   DeserializationError err = deserializeJson(doc, json, len);
   if (err != DeserializationError::Ok) {
     LOG_PRINTF("[JSON ERR] %s (len=%u)\n", err.c_str(), (unsigned int)len);
@@ -80,6 +81,23 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.cruiseSpeed = doc["cc"] | 0;
     t.cruiseOn = (doc["cc_on"].as<int>() != 0) || (t.cruiseSpeed > 0);
     t.gear = doc["gear"] | 0;
+    if (doc.containsKey("g_str")) {
+      const char* gs = doc["g_str"];
+      if (gs && strlen(gs) > 0) {
+        strncpy(t.gearStr, gs, sizeof(t.gearStr) - 1);
+        t.gearStr[sizeof(t.gearStr) - 1] = '\0';
+      }
+    } else {
+      if (t.gear > 0) snprintf(t.gearStr, sizeof(t.gearStr), "D%d", t.gear);
+      else if (t.gear == 0) snprintf(t.gearStr, sizeof(t.gearStr), "N");
+      else snprintf(t.gearStr, sizeof(t.gearStr), "R%d", abs(t.gear));
+    }
+    if (doc.containsKey("g_type")) {
+      const char* gt = doc["g_type"];
+      if (gt && strlen(gt) > 0) t.gearType = gt[0];
+    } else {
+      t.gearType = (t.gear > 0) ? 'D' : ((t.gear == 0) ? 'N' : 'R');
+    }
     t.rpm = doc["rpm"] | 0.0f;
     t.rpmMax = doc["rpm_max"] | 2500.0f;
     t.fuelPct = doc["fuel"] | 100;
@@ -88,6 +106,7 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.fuelWarning = (doc["fuel_warn"].as<int>() != 0);
     t.fuelRate = doc["fuel_r"] | 0.0f;
     t.truckWearPct = doc.containsKey("trk_w") ? doc["trk_w"].as<int>() : (int)round(doc["wear"].as<float>() * 100.0f);
+    t.trailerWearPct = doc.containsKey("trl_w") ? doc["trl_w"].as<int>() : -1;
     t.cargoWearPct = doc.containsKey("crg_w") ? doc["crg_w"].as<int>() : -1;
     t.cargoWeight = doc["crg_wgt"] | 0.0f;
     t.trailerAttached = (doc["trl_on"].as<int>() != 0);
@@ -96,6 +115,7 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.blinkerR = (doc["bl_r"].as<int>() != 0);
     t.lightsBeamLow = (doc["low"].as<int>() != 0);
     t.lightsBeamHigh = (doc["high"].as<int>() != 0);
+    t.lightsParking = (doc["park_l"].as<int>() != 0);
     t.parkBrake = (doc["park"].as<int>() != 0);
     t.airPressureWarn = (doc["air"].as<int>() != 0);
     t.airPressure = doc["air_p"] | 0.0f;
@@ -110,6 +130,9 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.etaTimeMin = doc["eta_t"] | 0;
     t.retarder = doc["ret"] | 0;
     t.wipers = (doc["wip"].as<int>() != 0);
+    t.wiperLevel = doc["wip_lvl"] | (t.wipers ? 1 : 0);
+    t.horn = (doc["horn"].as<int>() != 0);
+    t.engineOn = doc.containsKey("eng") ? (doc["eng"].as<int>() != 0) : true;
     t.beacon = (doc["bcn"].as<int>() != 0);
     t.motorBrake = (doc["mbrk"].as<int>() != 0);
     t.gameHour = doc["gh"] | -1;

@@ -104,7 +104,7 @@ except ImportError:
     _PSUTIL_OK = False
 
 
-DEFAULT_BAUD = 115200
+DEFAULT_BAUD = 460800
 DEFAULT_ETS2_URL = "http://127.0.0.1:25555/api/ets2/telemetry"
 DEFAULT_TEST_JSON = os.path.join(
     os.path.dirname(__file__), "mock_telemetry.json"
@@ -351,8 +351,11 @@ class Ets2SharedMemoryReader:
             wipers = raw[581]
             park = raw[582]
             mbrk = raw[583]
+            electric_on = raw[584]
+            engine_on = raw[585]
             bl_l = raw[586]
             bl_r = raw[587]
+            parking_light = raw[590]
             low = raw[591]
             high = raw[592]
             brk_l = 1 if raw[597] else 0
@@ -360,6 +363,47 @@ class Ets2SharedMemoryReader:
             beacon = raw[604]
             air = raw[608]
             fuel_warn = struct.unpack_from("<i", raw, 624)[0]
+
+            # Kiem tra cua so game active de bat phim ken (H/N) va cap do gat mua (P)
+            is_ets2_fg = False
+            try:
+                hwnd = ctypes.windll.user32.GetForegroundWindow()
+                fg_pid = wintypes.DWORD()
+                ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
+                is_ets2_fg = bool(self.ets2_pid and fg_pid.value == self.ets2_pid)
+            except Exception:
+                pass
+
+            # Theo doi cap do gat mua (1..3) qua phim P (0x50) & dong bo voi wipers SHM
+            wip_on = 1 if wipers else 0
+            if wip_on == 0:
+                self.wiper_lvl = 0
+                self.prev_p_down = False
+            else:
+                if getattr(self, "wiper_lvl", 0) <= 0:
+                    self.wiper_lvl = 1
+                try:
+                    p_down = bool(ctypes.windll.user32.GetAsyncKeyState(0x50) & 0x8000)
+                    if p_down and not getattr(self, "prev_p_down", False):
+                        # P vua duoc bam xuong (Rising Edge) -> chuyen nac: 1 -> 2 -> 3 -> 1
+                        self.wiper_lvl = (self.wiper_lvl % 3) + 1
+                    self.prev_p_down = p_down
+                except Exception:
+                    pass
+            wiper_lvl = self.wiper_lvl if wip_on else 0
+
+            # Kiem tra bam ken thuong (H: 0x48) hoac coi hoi (N: 0x4E) kem giu coi (horn latch)
+            h_pressed = False
+            try:
+                if (ctypes.windll.user32.GetAsyncKeyState(0x48) & 0x8000) or (ctypes.windll.user32.GetAsyncKeyState(0x4E) & 0x8000):
+                    h_pressed = True
+            except Exception:
+                pass
+
+            now_t = time.time()
+            if h_pressed:
+                self.horn_until = now_t + 0.35 # Giu it nhat 350ms de dam bao Serial truyen va OLED render sang ro net
+            horn_on = 1 if (getattr(self, "horn_until", 0) > now_t) else 0
 
             # Thong so chi tiet ap suat, nhiet do tu SCS SDK Telemetry
             air_psi = struct.unpack_from("<f", raw, 616)[0]
@@ -379,8 +423,23 @@ class Ets2SharedMemoryReader:
             pct_whl = round(w_whl * 100.0, 2)
             pct_trl = round(w_trl * 100.0, 2)
 
-            truck_wear_pct = int(round(100.0 * (sum(wears[:5]) / 5.0)))
-            cargo_wear_pct = int(round(w_trl * 100.0)) if trailer_on else -1
+            # Game ETS2 Route Advisor (F7) hien thi do hu hai dau keo theo BO PHAN HONG NANG NHAT (Max Component Wear)
+            max_truck_wear = max(w_eng, w_tra, w_cab, w_cha, w_whl)
+            truck_wear_pct = int(max_truck_wear * 100.0) # Dung int(floor) dong bo 100% voi game ETS2 hien thi
+            trailer_wear_pct = int(w_trl * 100.0) if trailer_on else -1
+
+            # Doc chinh xac do hu hai hang hoa (cargoDamage) tu SCS SDK Shared Memory (offset 1468)
+            cargo_damage_pct = -1
+            if self.pBufScs and trailer_on:
+                try:
+                    raw_scs = ctypes.string_at(self.pBufScs, 2048)
+                    scs_cargo_dmg = struct.unpack_from("<f", raw_scs, 1468)[0]
+                    if 0.0 <= scs_cargo_dmg <= 1.0:
+                        cargo_damage_pct = int(scs_cargo_dmg * 100.0)
+                except Exception:
+                    pass
+            if cargo_damage_pct < 0 and trailer_on:
+                cargo_damage_pct = trailer_wear_pct
             total_wear = float(sum(wears))
 
             odometer = struct.unpack_from("<f", raw, 680)[0]
@@ -424,31 +483,51 @@ class Ets2SharedMemoryReader:
             elif city_dst:
                 route_str = f"Den: {city_dst}"
 
-            # Xac dinh cap so hien thi (D1..D12) dong bo 100% voi taplo trong game:
-            # Uu tien 1: Doc gearDashboard tu Local\\SCSTelemetry (offset 508, SCS SDK chuan)
-            final_gear = None
+            # Xac dinh cap so hien thi (D1..D16, C1..C2, N, R1..R2) dong bo 100% voi taplo trong game:
             diff_lock = 0
             lift_axle = 0
-            if self.pBufScs:
+            raw_gear = 0
+
+            # Uu tien 1: Doc tu Funbit displayedGear hoac gear
+            if disp_gear != 0:
+                raw_gear = disp_gear
+            elif gear != 0:
+                raw_gear = gear
+
+            # Uu tien 2: Neu ca 2 deu = 0, kiem tra SCSTelemetry
+            if raw_gear == 0 and self.pBufScs:
                 try:
                     raw_scs = ctypes.string_at(self.pBufScs, 2048)
                     scs_dash_gear = struct.unpack_from("<i", raw_scs, 508)[0]
                     scs_mech_gear = struct.unpack_from("<i", raw_scs, 504)[0]
                     if scs_dash_gear != 0:
-                        final_gear = scs_dash_gear
-                    elif scs_mech_gear == 0:
-                        final_gear = 0
+                        raw_gear = scs_dash_gear
+                    elif scs_mech_gear != 0:
+                        raw_gear = scs_mech_gear
                 except Exception:
                     pass
 
-            # Uu tien 2 (Fallback Funbit): Bu tru crawler gear neu hop so co crawler (vi du Scania 12+2)
-            if final_gear is None:
-                raw_g = disp_gear if disp_gear != 0 else gear
-                if fwd_gears > 12 and raw_g > 0:
-                    crawlers = fwd_gears - 12
-                    final_gear = (raw_g - crawlers) if raw_g > crawlers else raw_g
+            # Thuat toan bu tru Crawler Gears cho hop so 14/16 cap (Scania, Volvo...):
+            crawlers = max(0, fwd_gears - 12) if fwd_gears > 12 else 0
+            if raw_gear > 0:
+                if crawlers > 0 and raw_gear <= crawlers:
+                    gear_type = "C"
+                    gear_val = raw_gear
+                    gear_str = f"C{raw_gear}"
                 else:
-                    final_gear = raw_g
+                    d_num = raw_gear - crawlers if crawlers > 0 else raw_gear
+                    gear_type = "D"
+                    gear_val = d_num
+                    gear_str = f"D{d_num}"
+            elif raw_gear < 0:
+                r_num = abs(raw_gear)
+                gear_type = "R"
+                gear_val = -r_num
+                gear_str = f"R{r_num}" if r_num > 1 else "R"
+            else:
+                gear_type = "N"
+                gear_val = 0
+                gear_str = "N"
 
             return {
                 "game": "ets2",
@@ -456,7 +535,9 @@ class Ets2SharedMemoryReader:
                 "lim": int(round(nav_lim)) if nav_lim > 0 else 0,
                 "cc": int(round(cc_spd)) if cc_spd > 0 else 0,
                 "cc_on": 1 if cc_on else 0,
-                "gear": int(final_gear),
+                "gear": int(gear_val),
+                "g_str": gear_str,
+                "g_type": gear_type,
                 "rpm": int(round(rpm)),
                 "rpm_max": int(round(rpmMax if rpmMax > 500 else 2500)),
                 "fuel": fuel_pct,
@@ -468,10 +549,14 @@ class Ets2SharedMemoryReader:
                 "bl_r": 1 if bl_r else 0,
                 "low": 1 if low else 0,
                 "high": 1 if high else 0,
+                "park_l": 1 if parking_light else 0,
+                "eng": 1 if engine_on else 0,
+                "horn": horn_on,
                 "park": 1 if park else 0,
                 "air": 1 if air else 0,
                 "ret": int(retarder),
                 "wip": 1 if wipers else 0,
+                "wip_lvl": wiper_lvl,
                 "bcn": 1 if beacon else 0,
                 "mbrk": 1 if mbrk else 0,
                 "brk_l": brk_l,
@@ -485,7 +570,8 @@ class Ets2SharedMemoryReader:
                 "crg_wgt": cargo_weight_t,
                 "wear": total_wear,
                 "trk_w": truck_wear_pct,
-                "crg_w": cargo_wear_pct,
+                "trl_w": trailer_wear_pct,
+                "crg_w": cargo_damage_pct,
                 "trl_on": trailer_on,
                 "odo": odo_km,
                 "eta_d": eta_d_km,
@@ -1122,17 +1208,18 @@ class Ets2DesktopCompanion:
         # Trailer & Cargo damage
         trailer = raw.get("trailer", {})
         trailer_on = 1 if trailer.get("attached", False) else 0
-        cargo_wear_pct = int(round(trailer.get("wear", 0.0) * 100.0)) if trailer_on else -1
+        trailer_wear_pct = int(trailer.get("wear", 0.0) * 100.0) if trailer_on else -1
+        cargo_wear_pct = int(trailer.get("cargoDamage", trailer.get("wear", 0.0)) * 100.0) if trailer_on else -1
 
-        # Truck wear (average across 5 components)
-        truck_wear_avg = (
-            truck.get("wearEngine", 0.0) +
-            truck.get("wearTransmission", 0.0) +
-            truck.get("wearCabin", 0.0) +
-            truck.get("wearChassis", 0.0) +
+        # Truck wear (Route Advisor F7: max component wear)
+        truck_wear_max = max(
+            truck.get("wearEngine", 0.0),
+            truck.get("wearTransmission", 0.0),
+            truck.get("wearCabin", 0.0),
+            truck.get("wearChassis", 0.0),
             truck.get("wearWheels", 0.0)
-        ) / 5.0
-        truck_wear_pct = int(round(truck_wear_avg * 100.0))
+        )
+        truck_wear_pct = int(truck_wear_max * 100.0)
         odo_km = int(round(truck.get("odometer", 0.0)))
 
         # Gear: displayedGear hoac gear (kem bu tru crawler gear)
@@ -1227,10 +1314,14 @@ class Ets2DesktopCompanion:
             "bl_r": 1 if (truck.get("blinkerRightActive", False) or truck.get("blinkerRightOn", False)) else 0,
             "low": 1 if truck.get("lightsBeamLowOn", False) else 0,
             "high": 1 if truck.get("lightsBeamHighOn", False) else 0,
+            "park_l": 1 if truck.get("lightsParkingOn", False) else 0,
+            "eng": 1 if truck.get("engineOn", True) else 0,
+            "horn": 1 if truck.get("hornOn", False) else 0,
             "park": 1 if truck.get("parkBrakeOn", False) else 0,
             "air": 1 if truck.get("airPressureWarningOn", False) else 0,
             "ret": int(truck.get("retarderBrake", 0)),
             "wip": 1 if truck.get("wipersOn", False) else 0,
+            "wip_lvl": int(truck.get("wipersMode", 1 if truck.get("wipersOn", False) else 0)),
             "bcn": 1 if (truck.get("lightsBeaconOn", False) or truck.get("beaconOn", False)) else 0,
             "mbrk": 1 if truck.get("motorBrakeOn", False) else 0,
             "brk_l": 1 if truck.get("lightsBrakeOn", False) else 0,
@@ -1245,6 +1336,7 @@ class Ets2DesktopCompanion:
             "crg_wgt": round(trailer.get("mass", 0.0) / 1000.0, 1) if trailer.get("mass", 0.0) > 0 else 0.0,
             "wear": float(w_eng + w_tra + w_cab + w_cha + w_whl + w_trl),
             "trk_w": truck_wear_pct,
+            "trl_w": trailer_wear_pct,
             "crg_w": cargo_wear_pct,
             "trl_on": trailer_on,
             "odo": odo_km,
@@ -1288,13 +1380,14 @@ class Ets2DesktopCompanion:
 
         # Chi gui cac truong ESP32 Dashboard thuc su can, khong gui coords/accel/damage chi tiet de tranh tran bo dem Serial UART
         esp_keys = {
-            "game", "spd", "lim", "cc", "cc_on", "gear", "rpm", "rpm_max",
+            "game", "spd", "lim", "cc", "cc_on", "gear", "g_str", "g_type", "rpm", "rpm_max",
             "fuel", "fuel_l", "fuel_cap", "fuel_warn", "fuel_r",
-            "trk_w", "crg_w", "crg_wgt", "trl_on", "odo",
+            "trk_w", "trl_w", "crg_w", "crg_wgt", "trl_on", "odo",
             "bl_l", "bl_r", "low", "high", "park",
             "air", "air_p", "oil_t", "water_t", "brake_t",
             "diff_l", "lift_a", "brk_l", "rev_l",
-            "ret", "wip", "bcn", "mbrk",
+            "ret", "wip", "wip_lvl", "bcn", "mbrk",
+            "horn", "eng", "park_l",
             "eta_d", "eta_t", "gh", "gm",
             "conn", "load", "load_pct", "pause", "evt", "evt_dur"
         }
@@ -1329,8 +1422,7 @@ class Ets2DesktopCompanion:
         self.update_fps()
         spd = p.get("spd", 0)
         lim = p.get("lim", 0)
-        gear = p.get("gear", 0)
-        gear_str = f"D{gear}" if gear > 0 else ("N" if gear == 0 else f"R{abs(gear)}")
+        gear_str = p.get("g_str") or (f"D{p.get('gear', 0)}" if p.get("gear", 0) > 0 else ("N" if p.get("gear", 0) == 0 else f"R{abs(p.get('gear', 0))}"))
         cc = p.get("cc", 0)
         cc_str = f"CRUISE {cc}k" if p.get("cc_on", 0) else "          "
         rpm = p.get("rpm", 0)
@@ -1342,12 +1434,16 @@ class Ets2DesktopCompanion:
 
         ret = p.get("ret", 0)
         ret_str = f"RET:{ret}" if ret > 0 else "     "
-        wip_str = "WIP" if p.get("wip", 0) else "   "
+        wip_lvl = p.get("wip_lvl", 1 if p.get("wip", 0) else 0)
+        wip_str = f"WIP:{wip_lvl}" if p.get("wip", 0) else "     "
+        horn_str = "HORN!" if p.get("horn", 0) else "     "
+        eng_str = "ENG" if p.get("eng", 1) else "!OFF"
         bcn_str = "BCN" if p.get("bcn", 0) else "   "
         evt_str = f"| >> {p['evt']} <<" if p.get("evt") else ""
 
         trkw = p.get("trk_w", 0)
-        crgw = f"{p.get('crg_w', 0)}%" if p.get("trl_on", 0) else "--"
+        trlw = f"{p.get('trl_w', 0)}%" if p.get("trl_on", 0) else "--"
+        crgw = f"{p.get('crg_w', 0)}%" if (p.get("trl_on", 0) and p.get("crg_w", -1) >= 0) else "--"
         fuel_l = p.get("fuel_l", 0)
         fuel_str = f"{fuel}% ({fuel_l}L)" if fuel_l > 0 else f"{fuel}%"
         eta_d = p.get("eta_d", 0)
@@ -1357,7 +1453,7 @@ class Ets2DesktopCompanion:
 
         try:
             sys.stdout.write(
-                f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | CRG: {crgw} {eta_str}{route_str}| {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
+                f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | TRL: {trlw} | CRG: {crgw} {eta_str}{route_str}| {eng_str} {horn_str} {wip_str} {ret_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
             )
             sys.stdout.flush()
         except Exception:

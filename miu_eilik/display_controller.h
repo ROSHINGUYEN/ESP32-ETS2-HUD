@@ -52,6 +52,8 @@ struct Ets2TelemetryData {
   int cruiseSpeed = 0;        // km/h
   bool cruiseOn = false;
   int gear = 0;               // >0: D1..D16, 0: N, <0: R1..R2
+  char gearStr[8] = "N";      // Chuoi cap so truc tiep: "D3", "C1", "C2", "N", "R2", "R"
+  char gearType = 'N';        // Loai so: 'D', 'C', 'R', 'N'
   float rpm = 0.0f;
   float rpmMax = 2500.0f;
   int fuelPct = 100;          // 0..100%
@@ -61,6 +63,7 @@ struct Ets2TelemetryData {
   float fuelRate = 0.0f;      // L/100km tieu hao nhien lieu
   int truckWearPct = 0;       // 0..100% (Độ hao mòn / hư hại xe tải)
   int cargoWearPct = -1;      // 0..100% (Độ hao mòn / hư hại hàng hóa, -1: không có hàng)
+  int trailerWearPct = -1;    // 0..100% (Độ hao mòn / hư hại rơ-moóc thùng, -1: không có rơ-moóc)
   float cargoWeight = 0.0f;   // Tan (khoi luong hang)
   bool trailerAttached = false; // Co keo ro-mooc hang
   int odometerKm = 0;         // Tong quang duong xe da chay (km)
@@ -82,6 +85,10 @@ struct Ets2TelemetryData {
   int etaTimeMin = 0;         // phut
   int retarder = 0;           // 0..5 (retarder brake steps)
   bool wipers = false;        // gat mua
+  int wiperLevel = 0;         // cap do gat mua (0: tat, 1..3: toc do gat)
+  bool horn = false;          // coi / ken (phim H / N)
+  bool engineOn = true;       // dong co dang no may
+  bool lightsParking = false; // den demi / parking lights
   bool beacon = false;        // den chop xoay noc
   bool motorBrake = false;    // phanh dong co
   int gameHour = -1;          // gio dong ho trong game (-1: chua co)
@@ -115,6 +122,7 @@ public:
   // ETS2 Game Telemetry
   Ets2TelemetryData gameTelem;
   unsigned long gameLastPacketMs = 0;
+  unsigned long bootProtectionUntilMs = 0;
   bool gameModeLocked = false;
 
   int clockYear  = 2026;
