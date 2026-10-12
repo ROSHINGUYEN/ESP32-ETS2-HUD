@@ -58,16 +58,24 @@ class DirectShmReader:
         try:
             raw = ctypes.string_at(p_buf, 1024)
             time_ms, paused = struct.unpack_from("<II", raw, 0)
-            if time_ms == 0:
-                return None
-
-            t_game = struct.unpack_from("<I", raw, 8)[0]
-            game_h = (t_game // 60) % 24
-            game_m = t_game % 60
-
             speed_ms = struct.unpack_from("<f", raw, 24)[0]
             gear = struct.unpack_from("<i", raw, 64)[0]
             rpm, rpmMax, fuel, fuelCap = struct.unpack_from("<4f", raw, 80)
+            eng = raw[585] if len(raw) > 585 else 0
+
+            # Ho tro ca Steam va TruckersMP (time_ms co the = 0 khi choi multiplayer)
+            if time_ms == 0 and eng == 0 and rpm < 100 and abs(speed_ms) < 0.05 and gear == 0:
+                return None
+
+            t_game = struct.unpack_from("<i", raw, 160)[0]
+            if t_game > 0:
+                game_h = (t_game // 60) % 24
+                game_m = t_game % 60
+            else:
+                now_lt = time.localtime()
+                game_h = now_lt.tm_hour
+                game_m = now_lt.tm_min
+
             retarder = struct.unpack_from("<i", raw, 564)[0]
             cc_on = raw[580]
             wipers = raw[581]

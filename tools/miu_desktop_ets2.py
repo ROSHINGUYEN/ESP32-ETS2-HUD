@@ -311,9 +311,27 @@ class Ets2SharedMemoryReader:
             # Offset 160: timeAbsolute (minutes elapsed in game world, non-zero = in-game)
             time_absolute = struct.unpack_from("<i", raw, 160)[0]
 
-            # Khi time_absolute <= 0: Game dang o man hinh menu / profile / loading
-            # ETS2 da bat va DLL telemetry dang chay -> gui payload connected + load: 1 de ESP32 hien thi Loading Splash!
-            if time_absolute <= 0:
+            speed_ms = struct.unpack_from("<f", raw, 24)[0]
+            gear = struct.unpack_from("<i", raw, 64)[0]
+            rpm, rpmMax, fuel, fuelCap = struct.unpack_from("<4f", raw, 80)
+            electric_on = raw[584] if len(raw) > 584 else 0
+            engine_on = raw[585] if len(raw) > 585 else 0
+
+            # Kiem tra xem nguoi choi da thuc su vao buong lai lai xe hay chua:
+            # - Voi Steam Singleplayer: time_absolute > 0
+            # - Voi TruckersMP (Multiplayer): time_absolute co the = 0 vi server dong bo gio rieng,
+            #   nhung xe da vao buong lai khi: engine_on=1, electric_on=1, rpm > 100, gear != 0, hoac abs(speed_ms) > 0.05
+            is_driving = (
+                time_absolute > 0 or
+                engine_on != 0 or
+                electric_on != 0 or
+                rpm > 100.0 or
+                abs(speed_ms) > 0.05 or
+                gear != 0
+            )
+
+            # Neu game dang o man hinh menu / login TruckersMP / chon server / loading map:
+            if not is_driving:
                 return {
                     "game": "ets2",
                     "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
@@ -336,23 +354,24 @@ class Ets2SharedMemoryReader:
             # Khi da vao buong lai lai xe: Reset loading_start_time
             self.loading_start_time = 0.0
 
-            # Decode game clock tu timeAbsolute (offset 160) - tong so phut trong game ETS2 (chuan 100%)
-            game_h = (time_absolute // 60) % 24
-            game_m = time_absolute % 60
+            # Decode gio cabin:
+            if time_absolute > 0:
+                game_h = (time_absolute // 60) % 24
+                game_m = time_absolute % 60
+            else:
+                # TruckersMP (Multiplayer dong bo gio server): fallback gio thuc he thong Windows
+                local_now = time.localtime()
+                game_h = local_now.tm_hour
+                game_m = local_now.tm_min
 
-            speed_ms = struct.unpack_from("<f", raw, 24)[0]
             ax, ay, az = struct.unpack_from("<3f", raw, 28)
             cx, cy, cz = struct.unpack_from("<3f", raw, 40)
-            gear = struct.unpack_from("<i", raw, 64)[0]
-            rpm, rpmMax, fuel, fuelCap = struct.unpack_from("<4f", raw, 80)
             fuel_rate = struct.unpack_from("<f", raw, 96)[0] * 100.0 # L/100km
             retarder = struct.unpack_from("<i", raw, 564)[0]
             cc_on = raw[580]
             wipers = raw[581]
             park = raw[582]
             mbrk = raw[583]
-            electric_on = raw[584]
-            engine_on = raw[585]
             bl_l = raw[586]
             bl_r = raw[587]
             parking_light = raw[590]
