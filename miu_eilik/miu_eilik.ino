@@ -149,6 +149,12 @@ static void checkSerialCommands() {
 // =====================================================================================
 
 void setup() {
+  // Tat den LED RGB tren bo mach ESP32-S3 (GPIO 48 tren DevKitC-1, GPIO 38 tren mot so board)
+  pinMode(48, OUTPUT);
+  digitalWrite(48, LOW);
+  pinMode(38, OUTPUT);
+  digitalWrite(38, LOW);
+
   Serial0.setRxBufferSize(2048);
   Serial0.begin(460800);
   Serial.begin(460800);

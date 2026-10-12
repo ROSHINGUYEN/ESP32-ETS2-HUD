@@ -69,9 +69,7 @@ void DisplayManager::begin() {
     { 1, 2, "Header (SDA=1, SCL=2)" },
     { 2, 1, "Header dao (SDA=2, SCL=1)" },
     { 41, 42, "IO41/42 (SDA=41, SCL=42)" },
-    { 42, 41, "IO41/42 dao (SDA=42, SCL=41)" },
-    { 47, 48, "IO47/48 (SDA=47, SCL=48)" },
-    { 48, 47, "IO47/48 dao (SDA=48, SCL=47)" }
+    { 42, 41, "IO41/42 dao (SDA=42, SCL=41)" }
   };
 
   for (const auto& c : candidates) {
