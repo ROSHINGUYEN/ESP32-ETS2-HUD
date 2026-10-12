@@ -14,7 +14,34 @@
 
 ---
 
-## 📸 Thiết Kế Giao Diện Buồng Lái (Digital Cockpit Layout)
+## 📸 3 Chế Độ Hoạt Động Thông Minh Trong Thực Tế (Smart Real-World Modes)
+
+Dựa trên hình ảnh hoạt động thực tế trên phần cứng **ESP32-S3 (N16R8) + Màn hình OLED 0.96" + Vỏ bảo vệ M39**, hệ thống tự động nhận diện và chuyển đổi mượt mà qua 3 chế độ:
+
+```
+┌───────────────────────────┐      ┌───────────────────────────┐      ┌───────────────────────────┐
+│     CHẾ ĐỘ 1: DESKTOP PET │      │    CHẾ ĐỘ 2: INTRO LOAD   │      │    CHẾ ĐỘ 3: COCKPIT HUD  │
+│                           │      │                           │      │                           │
+│     ┌───────┐ ┌───────┐   │ ──►  │    SCANIA TRUCK - ETS2    │ ──►  │  18:14              [ R ] │
+│     │ ■■■■■ │ │ ■■■■■ │   │      │    [Xe Scania Container]  │      │              2            │
+│     │ ■■■■■ │ │ ■■■■■ │   │      │    SAN SANG LAI XE 98%    │      │         ─── km/h ───      │
+│     └───────┘ └───────┘   │      │    [■■■■■■■■■■■■■■■■□□]   │      │  F:100% 996L  T:0%  C:--% │
+└───────────────────────────┘      └───────────────────────────┘      └───────────────────────────┘
+```
+
+1. **Chế Độ 1 — Thú Cưng Để Bàn Mắt Robot (RoboEyes Desktop Pet)**:
+   - **Thời điểm kích hoạt**: Khi bạn đang làm việc bình thường trên Windows và **chưa bật game**.
+   - **Hành vi**: Màn hình tự động hóa thành đôi mắt robot chuyển động sống động (tự chớp mắt ngẫu nhiên, liếc trái/phải, đổi biểu cảm vui, buồn, mệt mỏi, tò mò). Biến thiết bị thành thú cưng công nghệ (Desktop Companion) sinh động trên bàn làm việc.
+2. **Chế Độ 2 — Màn Hình Khởi Động & Tải Map Game (ETS2 Loading Splash)**:
+   - **Thời điểm kích hoạt**: Khi bạn bật game Euro Truck Simulator 2, đang xem video giới thiệu của nhà phát hành SCS Software hoặc khi game đang tải màn chơi (Loading Map).
+   - **Hành vi**: Màn hình tự động chuyển sang logo `SCANIA TRUCK - ETS2`, hình ảnh xe đầu kéo Scania kéo thùng container bạc dập gân, thông báo trạng thái `SAN SANG LAI XE 98%` và thanh tiến trình bo góc mượt mà từ 0% đến 100%.
+3. **Chế Độ 3 — Taplo Buồng Lái Kỹ Thuật Số (Digital Cockpit Dashboard)**:
+   - **Thời điểm kích hoạt**: Ngay khi bạn bước vào buồng lái lái xe.
+   - **Hành vi**: Màn hình hiển thị đầy đủ thông số thời gian thực: Giờ cabin (18:14), Vận tốc số to nét (`2 km/h`), Khung hộp số bo góc (`R`, `D1`..`D12`, `C1`, `C2`), Thước Xăng % và lít dầu thực tế (`100% (996L)`), Cụm đo độ bền xe tải / rơ-moóc / hàng hóa (`0% --% --%`), và hệ thống cảnh báo buồng lái (xi-nhan, đèn pha, gạt mưa, còi).
+
+---
+
+## 📸 Thiết Kế Giao Diện Buồng Lái Chi Tiết (Digital Cockpit Layout)
 
 Màn hình OLED 128x64 được thiết kế theo tỷ lệ phân chia 3 cột công thái học (Ergonomic 3-Column Layout), tối ưu hóa góc nhìn của tài xế khi gắn trên Vô-lăng hoặc Sim Rig:
 
@@ -149,7 +176,22 @@ Hệ thống hoạt động theo nguyên lý kênh truyền phân tầng khép k
 
 ## 🔌 Kê Khai Phần Cứng & Sơ Đồ Đấu Nối Dây (Hardware Specs & Wiring Diagram)
 
-### 1. Bảng Kê Khai Bo Mạch Vi Điều Khiển Hỗ Trợ (Supported Microcontrollers)
+### 1. 🛒 Danh Mục Linh Kiện & Link Mua Sắm Đã Kiểm Chứng (Hardware Bill of Materials - BOM)
+
+Toàn bộ các linh kiện phần cứng được sử dụng và kiểm chứng thực tế trong dự án đều có thể tìm mua dễ dàng trên Shopee với chi phí rất tiết kiệm:
+
+| STT | Tên Linh Kiện | Quy Cách & Thông Số Kỹ Thuật | Vai Trò & Ứng Dụng | Link Mua Tham Khảo (Shopee) |
+|:---:|---|---|---|:---:|
+| 1 | **Bo Mạch ESP32-S3-WROOM-1** | • Phiên bản 44 chân (44Pin)<br>• Cổng kép Type-C USB OTG + UART<br>• 16MB Flash (N16) + 8MB PSRAM (R8)<br>• Wi-Fi 2.4G & Bluetooth 5.0 | Bộ xử lý trung tâm điều phối 2 nhân 240MHz: Nhân 0 nhận dữ liệu 460800 baud, Nhân 1 render đồ họa mượt mà 30 FPS. | [Xem trên Shopee](https://shopee.vn/B%E1%BA%A3ng-ph%C3%A1t-tri%E1%BB%83n-ESP32-S3-M%C3%B4-%C4%91un-Wifi-2.4G-cho-Arduino-ESP-IDF-ESP32-S3-WROOM-1-N16R8-44Pin-Type-C-16MB-Flash-8M-PSRAM-ESP32-S3-i.578443443.48061933309) |
+| 2 | **Màn Hình OLED 0.96 inch I2C** | • Kích thước: 0.96 inch (128x64 pixels)<br>• Chuẩn giao tiếp: 4 Chân I2C (GND, VDD, SCK, SDA)<br>• Phân loại: Xanh dương hoặc Vàng-Xanh | Màn hình hiển thị Taplo kỹ thuật số nhỏ gọn, độ tương phản cao, góc nhìn rộng, tốc độ làm tươi nhanh và tiết kiệm chi phí nhất. | [Xem trên Shopee](https://shopee.vn/M%C3%B4-%C4%90un-Hi%E1%BB%83N-Th%E1%BB%8B-OLED-4pin-7pin-0.96-IIC-I2C-OLED-0.96-inch-128X64-OLED-0.96-IIC-I2C-Chuy%C3%AAn-D%E1%BB%A5ng-Cho-arduino-i.578443443.23972641115?extraParams=%7B%22display_model_id%22%3A39674326890%2C%22model_selection_logic%22%3A3%7D) |
+| 3 | **Vỏ Màn Hình OLED 0.96" / 1.3"** | • Vỏ bảo vệ in 3D chuyên dụng (Ver-2)<br>• Tương thích màn hình OLED 0.96 inch & 1.3 inch<br>• Đóng gói: Set 2 cái | Cố định và bảo vệ màn hình hiển thị chắc chắn, thẩm mỹ cao khi gắn lên vô lăng lái xe, taplo bàn làm việc hoặc khung Sim Rig. | [Xem trên Shopee](https://shopee.vn/(set-2-c%C3%A1i)-V%E1%BB%8F-m%C3%A0n-h%C3%ACnh-oled-0-96-inch-v%C3%A0-1.3-inch-Ver-2-i.310609561.50102722042) |
+| 4 | **Module LCD2004 Kèm I2C** | • Kích thước: 20 ký tự x 4 dòng (2004)<br>• Kèm module chuyển đổi I2C hàn sẵn<br>• Màn to hơn cho góc nhìn xa | Tùy chọn màn hình phụ cỡ lớn cho góc nhìn xa hơn trên buồng lái mô phỏng (Sim Rig). | [Xem trên Shopee](https://shopee.vn/Module-m%C3%A0n-h%C3%ACnh-LCD2004-k%C3%A8m-module-I2C-(H%C3%A0n-s%E1%BA%B5n)-i.16504852.21983158179?xptdk=34adf420-732b-4182-9063-b6082759be93) |
+| 5 | **Dây Cắm Test Board Dupont** | • Dây cắm 4 sợi Dupont (10 - 20cm)<br>• Khuyên dùng: Loại Cái - Cái (Female - Female)<br>• Lõi đồng truyền tín hiệu ổn định | Kết nối 4 chân I2C từ màn hình hiển thị trực tiếp sang các chân header của bo mạch ESP32-S3 mà không cần hàn chì. | [Xem trên Shopee](https://shopee.vn/D%C3%A2y-C%E1%BA%AFm-Test-Board-%C4%90%E1%BB%A7-Lo%E1%BA%A1i-(10-s%E1%BB%A3i)-D%C3%A2y-%C4%91%E1%BB%B1c-c%C3%A1i-D%C3%A2y-%C4%91i%E1%BB%87n-i.1119097536.22661358335) |
+| 6 | **Vỏ Bảo Vệ ESP32-S3 44 Chân** | • Vỏ bảo vệ nhựa Mẫu M39<br>• Thiết kế khớp khít chuẩn bo mạch 44 chân<br>• Khoét sẵn cổng Type-C và nút RST/BOOT | Bảo vệ bo mạch không bị chạm chập linh kiện khi để trên mặt bàn kim loại, tản nhiệt tốt, hoàn thiện thiết bị như sản phẩm thương mại. | [Xem trên Shopee](https://shopee.vn/V%E1%BB%8F-b%E1%BA%A3o-v%E1%BB%87-ESP32-S3-phi%C3%AAn-b%E1%BA%A3n-44-ch%C3%A2n-M%E1%BA%ABu-M39-i.1271503757.27474449547) |
+
+---
+
+### 2. Bảng Kê Khai Bo Mạch Vi Điều Khiển Hỗ Trợ (Supported Microcontrollers)
 
 Hệ thống được thiết kế tối ưu hóa phần cứng, tương thích rộng rãi với các dòng vi điều khiển kiến trúc ESP32:
 
@@ -161,7 +203,7 @@ Hệ thống được thiết kế tối ưu hóa phần cứng, tương thích 
 
 ---
 
-### 2. Bảng Kê Khai Màn Hình Hiển Thị Hỗ Trợ (Supported Displays)
+### 3. Bảng Kê Khai Màn Hình Hiển Thị Hỗ Trợ (Supported Displays)
 
 | Loại Màn Hình | Driver Điều Khiển | Độ Phân Giải & Kích Thước | Giao Tiếp Phần Cứng | Màu Sắc & Ứng Dụng Khuyên Dùng |
 |---|---|---|---|---|
@@ -174,7 +216,7 @@ Hệ thống được thiết kế tối ưu hóa phần cứng, tương thích 
 
 ---
 
-### 3. Sơ Đồ Đấu Nối Dây Chi Tiết (Detailed Visual Wiring Diagram)
+### 4. Sơ Đồ Đấu Nối Dây Chi Tiết (Detailed Visual Wiring Diagram)
 
 Sơ đồ kết nối trực quan giữa bo mạch vi điều khiển **ESP32-S3 DevKitC-1** và **Module Màn hình OLED 128x64 (4 Chân I2C)**:
 
@@ -215,11 +257,15 @@ Sơ đồ kết nối trực quan giữa bo mạch vi điều khiển **ESP32-S3
    - Loại A: `[GND - VCC - SCL - SDA]`
    - Loại B: `[VCC - GND - SCL - SDA]`  
    *Hãy luôn nhìn chữ in thực tế trên board OLED của bạn trước khi cắm dây để tránh cấp ngược cực gây chập cháy module OLED.*
-2. **Cơ chế Smart Auto-Scan I2C chống cắm nhầm**: Firmware MIU-ETS2 được tích hợp thuật toán thông minh tự động quét qua **8 cặp chân I2C dự phòng** (`GPIO 8/9`, `GPIO 9/8`, `GPIO 1/2`, `GPIO 2/1`, `GPIO 41/42`, `GPIO 47/48`). Nếu bạn vô tình cắm đảo ngược dây SDA và SCL, bo mạch vẫn sẽ tự động nhận diện màn hình và hoạt động bình thường!
+2. **Cơ chế Smart Auto-Scan I2C chống cắm nhầm**: Firmware MIU-ETS2 được tích hợp thuật toán thông minh tự động quét qua **8 cặp chân I2C dự phòng** (`GPIO 8/9`, `GPIO 9/8`, `GPIO 1/2`, `GPIO 2/1`, `GPIO 41/42`). Nếu bạn vô tình cắm đảo ngược dây SDA và SCL, bo mạch vẫn sẽ tự động nhận diện màn hình và hoạt động bình thường!
+3. **Giải thích hiện tượng đèn LED đỏ sáng trên bo mạch (PWR LED)**:
+   - Trên bo mạch ESP32-S3 DevKitC-1 (như thấy trong ảnh thực tế), có một bóng đèn LED đỏ nhỏ nằm ở cạnh dưới bo mạch (gần hàng chân 13-18). Đây là **Đèn LED Nguồn Phần Cứng (Hardware Power LED / PWR)** được thiết kế nối trực tiếp vào đường nguồn 3.3V từ cổng USB qua điện trở xuống Mass.
+   - **Đèn này KHÔNG đi qua bất kỳ chân GPIO nào của chip ESP32-S3**, do đó nó không thể tắt/bật bằng code. Đèn luôn sáng khi cắm cáp USB để báo hiệu mạch đang nhận nguồn điện ổn định. Đây là hiện tượng vật lý hoàn toàn bình thường và an toàn 100%. Nếu muốn che bớt ánh sáng đỏ vào ban đêm, bạn chỉ cần dán một mẩu decal/băng dính đen nhỏ lên vị trí bóng đèn.
+   - Toàn bộ đèn LED RGB WS2812 hoặc LED điều khiển bằng GPIO trên bo mạch đã được firmware MIU-ETS2 chủ động tắt hoàn toàn để tiết kiệm năng lượng và chống chói mắt.
 
 ---
 
-### 4. 🛡️ Cam Kết An Toàn, Chống Lỗi Code & Bảo Mật Dữ Liệu (Code Quality & Security)
+### 5. 🛡️ Cam Kết An Toàn, Chống Lỗi Code & Bảo Mật Dữ Liệu (Code Quality & Security)
 
 Để người dùng an tâm tuyệt đối khi tải về và sử dụng, dự án áp dụng các tiêu chuẩn chất lượng nghiêm ngặt:
 
