@@ -111,6 +111,20 @@ DEFAULT_TEST_JSON = os.path.join(
 )
 
 
+def decode_c_string(raw_bytes: bytes, offset: int, max_len: int = 64) -> str:
+    """Giai ma chuoi C-style null-terminated tu bo nho Shared Memory an toan."""
+    if offset >= len(raw_bytes):
+        return ""
+    chunk = raw_bytes[offset:offset + max_len]
+    null_idx = chunk.find(b'\x00')
+    if null_idx != -1:
+        chunk = chunk[:null_idx]
+    try:
+        return chunk.decode('utf-8', errors='ignore').strip()
+    except Exception:
+        return ""
+
+
 class Ets2SharedMemoryReader:
     """Doc truc tiep du lieu Telemetry tu Windows Shared Memory cua game Euro Truck Simulator 2."""
 
@@ -158,10 +172,10 @@ class Ets2SharedMemoryReader:
                     return False
             self._ensure_scs_telemetry()
             return True
-        # File mapping name do ets2-telemetry-server.dll tao trong game
+        # File mapping name do ets2-telemetry-server.dll tao trong game (map 4096 de du het struct fields)
         self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
         if self.hMap:
-            self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 2048)
+            self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 4096)
             if self.pBuf:
                 self.ets2_pid = self._find_ets2_pid()
                 self._ensure_scs_telemetry()
@@ -237,7 +251,7 @@ class Ets2SharedMemoryReader:
                 # Thu ket noi lai SHM neu plugin vua tao xong
                 self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
                 if self.hMap:
-                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 2048)
+                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 4096)
                 if not self.pBuf:
                     # Tra ve goi connected mac dinh de ESP32 hien thi Loading Splash ngay trong doan intro!
                     return {
@@ -248,11 +262,16 @@ class Ets2SharedMemoryReader:
                         "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
                         "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
                         "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
-                        "odo": 0, "eta_d": 0, "gh": -1, "gm": -1,
+                        "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
                         "conn": 1, "pause": 1,
+                        "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
+                        "income": 0, "truck_make": "", "truck_model": "",
+                        "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
+                        "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
+                        "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     }
 
-            raw = ctypes.string_at(self.pBuf, 1024)
+            raw = ctypes.string_at(self.pBuf, 2048)
 
             # Offset 8: pluginVersion (phai >= 1 neu DLL telemetry da duoc nap trong game)
             plugin_ver = struct.unpack_from("<I", raw, 8)[0]
@@ -270,37 +289,19 @@ class Ets2SharedMemoryReader:
             if time_absolute <= 0:
                 return {
                     "game": "ets2",
-                    "spd": 0,
-                    "lim": 0,
-                    "cc": 0,
-                    "cc_on": 0,
-                    "gear": 0,
-                    "rpm": 0,
-                    "rpm_max": 2500,
-                    "fuel": 100,
-                    "fuel_l": 0,
-                    "fuel_cap": 0,
-                    "fuel_warn": 0,
-                    "bl_l": 0,
-                    "bl_r": 0,
-                    "low": 0,
-                    "high": 0,
-                    "park": 1,
-                    "air": 0,
-                    "ret": 0,
-                    "wip": 0,
-                    "bcn": 0,
-                    "mbrk": 0,
-                    "wear": 0.0,
-                    "trk_w": 0,
-                    "crg_w": -1,
-                    "trl_on": 0,
-                    "odo": 0,
-                    "eta_d": 0,
-                    "gh": -1,
-                    "gm": -1,
-                    "conn": 1,
-                    "pause": 1,
+                    "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
+                    "gear": 0, "rpm": 0, "rpm_max": 2500,
+                    "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0,
+                    "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
+                    "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
+                    "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
+                    "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
+                    "conn": 1, "pause": 1,
+                    "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
+                    "income": 0, "truck_make": "", "truck_model": "",
+                    "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
+                    "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
+                    "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 }
 
             # Decode game clock tu timeAbsolute (offset 160) - tong so phut trong game ETS2 (chuan 100%)
@@ -308,6 +309,8 @@ class Ets2SharedMemoryReader:
             game_m = time_absolute % 60
 
             speed_ms = struct.unpack_from("<f", raw, 24)[0]
+            ax, ay, az = struct.unpack_from("<3f", raw, 28)
+            cx, cy, cz = struct.unpack_from("<3f", raw, 40)
             gear = struct.unpack_from("<i", raw, 64)[0]
             rpm, rpmMax, fuel, fuelCap = struct.unpack_from("<4f", raw, 80)
             retarder = struct.unpack_from("<i", raw, 564)[0]
@@ -325,10 +328,17 @@ class Ets2SharedMemoryReader:
 
             trailer_on = 1 if raw[21] != 0 else 0
             wears = struct.unpack_from("<6f", raw, 656)
-            # wears[0..4]: engine, trans, cabin, chassis, wheels
+            w_eng, w_tra, w_cab, w_cha, w_whl, w_trl = wears
+
+            pct_eng = round(w_eng * 100.0, 2)
+            pct_tra = round(w_tra * 100.0, 2)
+            pct_cab = round(w_cab * 100.0, 2)
+            pct_cha = round(w_cha * 100.0, 2)
+            pct_whl = round(w_whl * 100.0, 2)
+            pct_trl = round(w_trl * 100.0, 2)
+
             truck_wear_pct = int(round(100.0 * (sum(wears[:5]) / 5.0)))
-            # wears[5]: wearTrailer
-            cargo_wear_pct = int(round(wears[5] * 100.0)) if trailer_on else -1
+            cargo_wear_pct = int(round(w_trl * 100.0)) if trailer_on else -1
             total_wear = float(sum(wears))
 
             odometer = struct.unpack_from("<f", raw, 680)[0]
@@ -342,12 +352,30 @@ class Ets2SharedMemoryReader:
             disp_gear = struct.unpack_from("<i", raw, 996)[0]
             fwd_gears = struct.unpack_from("<i", raw, 68)[0]
             nav_d = struct.unpack_from("<f", raw, 1000)[0] / 1000.0
+            nav_t = struct.unpack_from("<f", raw, 1004)[0]
             nav_lim = struct.unpack_from("<f", raw, 1008)[0] * 3.6
             spd_kmh = max(0, int(round(speed_ms * 3.6)))
             eta_d_km = int(round(nav_d)) if (0 < nav_d < 50000.0) else 0
+            eta_t_min = int(round(nav_t / 60.0)) if nav_t > 0 else 0
+
+            # Trich xuat thong tin ban do, cong ty, hang hoa va lo trinh
+            cargo = decode_c_string(raw, 236, 64)
+            job_income = struct.unpack_from("<i", raw, 300)[0]
+            city_src = decode_c_string(raw, 308, 64)
+            city_dst = decode_c_string(raw, 372, 64)
+            comp_src = decode_c_string(raw, 436, 64)
+            comp_dst = decode_c_string(raw, 500, 64)
+            truck_make = decode_c_string(raw, 688, 64)
+            truck_model = decode_c_string(raw, 816, 64)
+
+            route_str = ""
+            if city_src and city_dst:
+                route_str = f"{city_src} -> {city_dst}"
+            elif city_dst:
+                route_str = f"Den: {city_dst}"
 
             # Xac dinh cap so hien thi (D1..D12) dong bo 100% voi taplo trong game:
-            # Uu tien 1: Doc gearDashboard tu Local\SCSTelemetry (offset 508, SCS SDK chuan)
+            # Uu tien 1: Doc gearDashboard tu Local\\SCSTelemetry (offset 508, SCS SDK chuan)
             final_gear = None
             if self.pBufScs:
                 try:
@@ -399,10 +427,33 @@ class Ets2SharedMemoryReader:
                 "trl_on": trailer_on,
                 "odo": odo_km,
                 "eta_d": eta_d_km,
+                "eta_t": eta_t_min,
                 "gh": game_h,
                 "gm": game_m,
                 "conn": 1,
                 "pause": 1 if (paused != 0) else 0,
+                # Thong tin ban do, lo trinh & dieu huong GPS
+                "route": route_str,
+                "city_src": city_src,
+                "city_dst": city_dst,
+                "comp_src": comp_src,
+                "comp_dst": comp_dst,
+                "cargo": cargo,
+                "income": job_income,
+                "truck_make": truck_make,
+                "truck_model": truck_model,
+                "coords": [cx, cy, cz],
+                "accel": [ax, ay, az],
+                # Chi tiet hu hai 6 bo phan xe & ro-mooc
+                "damage": {
+                    "engine": pct_eng,
+                    "trans": pct_tra,
+                    "cabin": pct_cab,
+                    "chassis": pct_cha,
+                    "wheels": pct_whl,
+                    "trailer": pct_trl,
+                },
+                "raw_wear": list(wears),
             }
         except Exception:
             self.close()
@@ -438,6 +489,166 @@ def find_default_port() -> Optional[str]:
 
     # Tuyệt đối KHÔNG trả về COM1 nếu chưa tìm thấy thiết bị USB
     return None
+
+
+class CollisionDetector:
+    """He thong phat hien, phan tich hu hai tung linh kien va ghi log va cham chinh xac 100% tu API goc ETS2."""
+
+    COMPONENT_NAMES = {
+        0: ("Động cơ", "Engine"),
+        1: ("Hộp số", "Transmission"),
+        2: ("Cabin", "Cabin"),
+        3: ("Khung gầm", "Chassis"),
+        4: ("Bánh xe", "Wheels"),
+        5: ("Rơ-moóc / Hàng hóa", "Trailer/Cargo"),
+    }
+
+    def __init__(self, log_path: Optional[str] = None):
+        self.log_path = log_path or os.path.join(os.path.dirname(__file__), "collision_history.log")
+        self.prev_wears: Optional[list] = None
+        self.prev_speed = 0
+        self.last_collision_time = 0.0
+        self.total_collisions = 0
+        self.last_collision_event: Optional[Dict[str, Any]] = None
+
+    def check(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        raw_wears = payload.get("raw_wear")
+        if not raw_wears or len(raw_wears) < 6:
+            return None
+
+        speed = payload.get("spd", 0)
+        now = time.time()
+
+        if self.prev_wears is None:
+            self.prev_wears = list(raw_wears)
+            self.prev_speed = speed
+            return None
+
+        # Tinh bien thien (delta) tung thanh phan
+        deltas = [raw_wears[i] - self.prev_wears[i] for i in range(6)]
+
+        # Truong hop xe vao gara sua (wear giam xuong)
+        if any(d < -0.01 for d in deltas):
+            self.prev_wears = list(raw_wears)
+            self.prev_speed = speed
+            return None
+
+        # Chi tinh bien thien duong (hu hong tang them)
+        pos_deltas = [max(0.0, d) for d in deltas]
+        truck_jump = sum(pos_deltas[:5])
+        trailer_jump = pos_deltas[5]
+        total_jump = truck_jump + trailer_jump
+
+        # Nguong phat hien va cham:
+        # Khi xe chay binh thuong, wear tang cuc ky cham (< 0.00005/frame).
+        # Khi xay ra va cham, it nhat mot bo phan tang >= 0.1% (0.001) hoac tong jump >= 0.15% (0.0015).
+        is_collision = (any(d >= 0.001 for d in pos_deltas) or total_jump >= 0.0015)
+
+        if not is_collision:
+            self.prev_wears = list(raw_wears)
+            self.prev_speed = speed
+            return None
+
+        # Tranh ghi log trung lap neu cung mot cu dam keo dai qua 2 khung hinh lien tiep (cooldown 0.6s)
+        if (now - self.last_collision_time < 0.6) and (total_jump < 0.005):
+            self.prev_wears = list(raw_wears)
+            self.prev_speed = speed
+            return None
+
+        self.last_collision_time = now
+        self.total_collisions += 1
+
+        # Tinh toc do sut giam va luc chan dong G-force
+        speed_at_impact = max(speed, self.prev_speed)
+        speed_drop = max(0, self.prev_speed - speed)
+        ax, ay, az = payload.get("accel", [0.0, 0.0, 0.0])
+        accel_mag = math.sqrt(ax * ax + ay * ay + az * az)
+        g_force = round(accel_mag / 9.80665, 1) if accel_mag > 0 else 0.0
+
+        # Phan loai muc do nghiem trong
+        if total_jump >= 0.08:
+            severity = "TAI NAN RAT NANG"
+            severity_en = "CATASTROPHIC"
+        elif total_jump >= 0.03:
+            severity = "DAM MANH"
+            severity_en = "SEVERE"
+        elif total_jump >= 0.008:
+            severity = "VA CHAM VUA"
+            severity_en = "MODERATE"
+        else:
+            severity = "QUET NHE"
+            severity_en = "MINOR"
+
+        # Danh sach cac linh kien bi ton hai
+        damaged_components = []
+        for i, d in enumerate(pos_deltas):
+            if d >= 0.0005:  # Tang >= 0.05%
+                vn_name, en_name = self.COMPONENT_NAMES.get(i, ("Khác", "Other"))
+                damaged_components.append({
+                    "component": vn_name,
+                    "component_en": en_name,
+                    "delta_pct": round(d * 100.0, 2),
+                    "current_pct": round(raw_wears[i] * 100.0, 2),
+                })
+
+        # Thong tin ban do va lo trinh tai thoi diem va cham
+        route = payload.get("route", "")
+        city_dst = payload.get("city_dst", "")
+        eta_d = payload.get("eta_d", 0)
+        coords = payload.get("coords", [0.0, 0.0, 0.0])
+
+        loc_str = route if route else (city_dst if city_dst else "Khong xac dinh")
+        if eta_d > 0:
+            loc_str += f" (Con {eta_d} km)"
+
+        record = {
+            "timestamp": now,
+            "time_str": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "game_time": f"{payload.get('gh', 0):02d}:{payload.get('gm', 0):02d}",
+            "severity": severity,
+            "severity_en": severity_en,
+            "total_damage_increase_pct": round(total_jump * 100.0, 2),
+            "speed_kmh": speed_at_impact,
+            "speed_drop_kmh": speed_drop,
+            "g_force": g_force,
+            "route": route,
+            "location": loc_str,
+            "coordinates": {"x": round(coords[0], 1), "y": round(coords[1], 1), "z": round(coords[2], 1)},
+            "damaged_components": damaged_components,
+            "current_truck_wear_pct": payload.get("trk_w", 0),
+            "current_cargo_wear_pct": payload.get("crg_w", -1),
+        }
+
+        self.last_collision_event = record
+        self._write_collision_log(record)
+
+        self.prev_wears = list(raw_wears)
+        self.prev_speed = speed
+        return record
+
+    def _write_collision_log(self, rec: Dict[str, Any]):
+        """Ghi nhat ky va cham chi tiet ra file collision_history.log."""
+        try:
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write("\n" + "=" * 78 + "\n")
+                f.write(f"[{rec['time_str']}] VA CHAM: {rec['severity']} (+{rec['total_damage_increase_pct']}%) | Game Time: {rec['game_time']}\n")
+                f.write(f"  Vận tốc lúc đâm: {rec['speed_kmh']} km/h (Sụt giảm: {rec['speed_drop_kmh']} km/h) | Lực G: {rec['g_force']}G\n")
+                f.write(f"  Vị trí bản đồ:   {rec['location']} | Toạ độ: X={rec['coordinates']['x']}, Y={rec['coordinates']['y']}, Z={rec['coordinates']['z']}\n")
+                f.write("  Chi tiết linh kiện bị hư hại phát sinh:\n")
+                for comp in rec['damaged_components']:
+                    f.write(f"    - {comp['component']:18s}: +{comp['delta_pct']:4.2f}%  (Tổng hiện tại: {comp['current_pct']:4.2f}%)\n")
+                f.write(f"  Tổng hư hại xe hiện tại: {rec['current_truck_wear_pct']}% | Rơ-moóc: {rec['current_cargo_wear_pct']}%\n")
+                f.write("=" * 78 + "\n")
+        except Exception as e:
+            print(f"[COLLISION LOG ERR] {e}")
+
+        # In thong bao noi bat tren console
+        print(f"\n\n{'!'*20} [CANH BAO VA CHAM / COLLISION] {'!'*20}")
+        print(f"  Muc do: {rec['severity']} (+{rec['total_damage_increase_pct']}%) | Van toc: {rec['speed_kmh']} km/h | Luc G: {rec['g_force']}G")
+        print(f"  Lo trinh: {rec['location']}")
+        for comp in rec['damaged_components']:
+            print(f"    + {comp['component']}: +{comp['delta_pct']}% (Hien tai: {comp['current_pct']}%)")
+        print(f"{'!'*65}\n")
 
 
 class Ets2DesktopCompanion:
@@ -484,6 +695,7 @@ class Ets2DesktopCompanion:
             Ets2SharedMemoryReader() if sys.platform == "win32" else None
         )
         self.source_name = "WAITING"
+        self.collision_detector = CollisionDetector()
 
         # Event Tracking State (Fines, tolls, damage & cockpit actions)
         self.prev_ret = 0
@@ -515,9 +727,10 @@ class Ets2DesktopCompanion:
 
         new_event = None
 
-        # 1. Va cham tai nan (Collision / Crash wear increase)
-        if self.prev_wear > 0.0 and wear > (self.prev_wear + 0.002):
-            new_event = "VA CHAM: -400 EUR"
+        # 1. Va cham tai nan (Collision / Crash voi CollisionDetector chinh xac 100%)
+        col = self.collision_detector.check(p)
+        if col:
+            new_event = f"VA CHAM: +{col['total_damage_increase_pct']}%"
         self.prev_wear = wear
 
         # 2. Phat chay qua toc do (Speed camera fine)
@@ -668,20 +881,38 @@ class Ets2DesktopCompanion:
         self._last_state_dump = now
         state_file = os.path.join(os.path.dirname(__file__), "telemetry_state.json")
         try:
+            p = payload or {}
             data = {
                 "daemon_running": True,
                 "pid": os.getpid(),
                 "port": self.port_name,
                 "baud": self.baud,
                 "serial_connected": bool(self.ser and self.ser.is_open),
-                "game": self.game,
+                "game": p.get("game", "ets2"),
                 "game_connected": bool(self.game_connected_prev),
                 "source": self.source_name,
                 "fps": round(self.current_fps, 1),
                 "packets_sent": self.packets_sent,
                 "active_event": self.active_event_text if now < self.event_expire_time else "",
                 "timestamp": now,
-                "telemetry": payload or {},
+                "map": {
+                    "route": p.get("route", ""),
+                    "source_city": p.get("city_src", ""),
+                    "dest_city": p.get("city_dst", ""),
+                    "source_company": p.get("comp_src", ""),
+                    "dest_company": p.get("comp_dst", ""),
+                    "cargo": p.get("cargo", ""),
+                    "income": p.get("income", 0),
+                    "eta_km": p.get("eta_d", 0),
+                    "eta_min": p.get("eta_t", 0),
+                    "truck_make": p.get("truck_make", ""),
+                    "truck_model": p.get("truck_model", ""),
+                    "coordinates": p.get("coords", [0.0, 0.0, 0.0]),
+                },
+                "damage": p.get("damage", {}),
+                "collision_count": self.collision_detector.total_collisions,
+                "last_collision": self.collision_detector.last_collision_event,
+                "telemetry": p,
             }
             tmp_file = state_file + ".tmp"
             with open(tmp_file, "w", encoding="utf-8") as f:
@@ -865,6 +1096,56 @@ class Ets2DesktopCompanion:
             gh = (int(gt) // 60) % 24
             gm = int(gt) % 60
 
+        job = raw.get("job", {})
+        city_src = job.get("sourceCity", "")
+        city_dst = job.get("destinationCity", "")
+        comp_src = job.get("sourceCompany", "")
+        comp_dst = job.get("destinationCompany", "")
+        job_income = job.get("income", 0)
+        cargo = trailer.get("name", "")
+
+        route_str = ""
+        if city_src and city_dst:
+            route_str = f"{city_src} -> {city_dst}"
+        elif city_dst:
+            route_str = f"Den: {city_dst}"
+
+        w_eng = float(truck.get("wearEngine", 0.0))
+        w_tra = float(truck.get("wearTransmission", 0.0))
+        w_cab = float(truck.get("wearCabin", 0.0))
+        w_cha = float(truck.get("wearChassis", 0.0))
+        w_whl = float(truck.get("wearWheels", 0.0))
+        w_trl = float(trailer.get("wear", 0.0))
+
+        pct_eng = round(w_eng * 100.0, 2)
+        pct_tra = round(w_tra * 100.0, 2)
+        pct_cab = round(w_cab * 100.0, 2)
+        pct_cha = round(w_cha * 100.0, 2)
+        pct_whl = round(w_whl * 100.0, 2)
+        pct_trl = round(w_trl * 100.0, 2)
+
+        plc = truck.get("placement", {})
+        acc = truck.get("acceleration", {})
+        cx = float(plc.get("x", 0.0))
+        cy = float(plc.get("y", 0.0))
+        cz = float(plc.get("z", 0.0))
+        ax = float(acc.get("x", 0.0))
+        ay = float(acc.get("y", 0.0))
+        az = float(acc.get("z", 0.0))
+
+        # ETA time
+        eta_t = 0
+        et_raw = nav.get("estimatedTime")
+        if isinstance(et_raw, str) and "T" in et_raw:
+            try:
+                t_str = et_raw.split("T")[1][:8]
+                h_p, m_p, _ = map(int, t_str.split(":"))
+                eta_t = h_p * 60 + m_p
+            except Exception:
+                pass
+        elif isinstance(et_raw, (int, float)):
+            eta_t = int(round(et_raw / 60.0))
+
         payload = {
             "game": "ets2",
             "spd": int(round(truck.get("speed", 0.0))),
@@ -888,16 +1169,39 @@ class Ets2DesktopCompanion:
             "wip": 1 if truck.get("wipersOn", False) else 0,
             "bcn": 1 if (truck.get("lightsBeaconOn", False) or truck.get("beaconOn", False)) else 0,
             "mbrk": 1 if truck.get("motorBrakeOn", False) else 0,
-            "wear": float(truck.get("wearEngine", 0.0) + truck.get("wearTransmission", 0.0) + truck.get("wearCabin", 0.0)),
+            "wear": float(w_eng + w_tra + w_cab + w_cha + w_whl + w_trl),
             "trk_w": truck_wear_pct,
             "crg_w": cargo_wear_pct,
             "trl_on": trailer_on,
             "odo": odo_km,
             "eta_d": eta_d,
+            "eta_t": eta_t,
             "gh": gh,
             "gm": gm,
             "conn": 1 if game.get("connected", False) else 0,
             "pause": 1 if game.get("paused", False) else 0,
+            # Ban do & Lo trinh
+            "route": route_str,
+            "city_src": city_src,
+            "city_dst": city_dst,
+            "comp_src": comp_src,
+            "comp_dst": comp_dst,
+            "cargo": cargo,
+            "income": job_income,
+            "truck_make": truck.get("make", ""),
+            "truck_model": truck.get("model", ""),
+            "coords": [cx, cy, cz],
+            "accel": [ax, ay, az],
+            # Chi tiet hu hai
+            "damage": {
+                "engine": pct_eng,
+                "trans": pct_tra,
+                "cabin": pct_cab,
+                "chassis": pct_cha,
+                "wheels": pct_whl,
+                "trailer": pct_trl,
+            },
+            "raw_wear": [w_eng, w_tra, w_cab, w_cha, w_whl, w_trl],
         }
         return payload
 
@@ -959,10 +1263,12 @@ class Ets2DesktopCompanion:
         fuel_str = f"{fuel}% ({fuel_l}L)" if fuel_l > 0 else f"{fuel}%"
         eta_d = p.get("eta_d", 0)
         eta_str = f"| ETA: {eta_d}km " if eta_d > 0 else ""
+        route = p.get("route", "")
+        route_str = f"| {route} " if route else ""
 
         try:
             sys.stdout.write(
-                f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | CRG: {crgw} {eta_str}| {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
+                f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | CRG: {crgw} {eta_str}{route_str}| {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
             )
             sys.stdout.flush()
         except Exception:
