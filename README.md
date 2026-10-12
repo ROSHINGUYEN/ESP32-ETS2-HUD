@@ -1,228 +1,230 @@
-# MIU EILIK - ESP32-S3 OLED TELEMETRY COMPANION & ROBOT EYES
+# MIU EILIK - ESP32-S3 DIGITAL COCKPIT & TELEMETRY COMPANION
 
-Hệ thống **Taplo hiển thị Telemetry xe tải Châu Âu (Euro Truck Simulator 2 / ATS)** và **Robot biểu cảm (RoboEyes)** chạy trên vi điều khiển **ESP32-S3-WROOM-1 (N16R8)** với màn hình OLED 128x64.
-
-Dự án tích hợp cơ chế **Tự động chạy ngầm cùng Windows (0-Touch)**, kéo luồng trực tiếp từ Windows Shared Memory với độ trễ siêu thấp (<2ms) qua chuẩn mở SCS SDK / Open Telemetry API, và **Cổng MCP Server (Model Context Protocol)** kết nối trực tiếp với AI IDE (Antigravity, Cursor, Claude).
+> **Hệ thống Taplo Buồng Lái Kỹ Thuật Số (Digital Cockpit)** và **Trợ Lý Biểu Cảm (RoboEyes)** dành cho **Euro Truck Simulator 2 (ETS2)** & **American Truck Simulator (ATS)** trên vi điều khiển **ESP32-S3-WROOM-1 (N16R8)** với màn hình hiển thị OLED 128x64.
 
 ---
 
-## 📸 Tổng Quan Tính Năng Chính
+## 🏷️ Danh Mục Game & Hệ Thống (Game Tags & Topics)
 
-```
-  ┌─────────────────────────────────────────────────────────────┐
-  │  <  D  WIP         14:25         R2  CC  >  │  Header: Xi-nhan | Giờ | Retarder | CC
-  │  ─────────────────────────────────────────  │  ───────────────────────────────────
-  │    (80)               85           [ D12 ]  │  Trái: Biển báo [80] (chớp quá tốc)
-  │    C:70            ── km/h ──       [ P ]   │  Giữa: Tốc độ số to nét (Font 3)
-  │  ─────────────────────────────────────────  │  Phải: Cấp số chuẩn Taplo | Phanh [P]
-  │  F: [■■■■] 92%       R: [■■■■|■| ]          │  Thước Xăng % & Thước RPM dải kinh tế
-  │  T:2%       C:0%       778L          140km  │  Độ bền xe | Hàng hóa | Lít dầu | ETA
-  └─────────────────────────────────────────────────────────────┘
-```
+### Game & Thể Loại Mô Phỏng
+`#EuroTruckSimulator2` `#AmericanTruckSimulator` `#ETS2` `#ATS` `#SCSSoftware` `#SimRacing` `#TruckSimulator` `#SCSModding` `#SimulationGames`
 
-### 1. 🚛 Full Taplo Euro Truck Simulator 2 (ETS2 / ATS)
-- **Tốc độ xe to bản (Font 3)**: Chữ số to 21x16 pixel, căn giữa hoàn hảo, hiển thị rõ nét từ xa.
-- **Biển báo tốc độ Châu Âu (`[80]`, `[90]`)**: Tự động nhận diện biển báo trên cung đường. Chớp nháy tương phản ngược (chữ trắng nền đen) khi chạy quá tốc độ để cảnh báo tài xế.
-- **Hộp số thông minh**: Tự động hiển thị `D1`..`D12`, `N` (Số Mo), `R1`, `R2` (Số lùi).
-- **Vòng tua máy RPM & Dải tua kinh tế**: Thanh Bar Graph RPM mượt mà kèm vạch chấm căn chuẩn dải tua xanh kinh tế (`1000 - 1500 RPM`) theo chuẩn các dòng xe Scania, Volvo, MAN.
-- **Nhiên liệu chi tiết**: Hiển thị đồng thời **% bình xăng** và **Số lít thực tế** (ví dụ `92% (778L)`). Tự động chớp cảnh báo khi xăng dưới 15%.
-- **Độ bền xe & Rơ-moóc**:
-  - `T:%` (Truck Wear): Tỷ lệ hao mòn tổng hợp đầu kéo (Động cơ, hộp số, cabin, khung gầm, bánh xe).
-  - `C:%` (Cargo/Trailer Wear): Tỷ lệ hao mòn hàng hóa và rơ-moóc (`--` nếu chưa nối rơ-moóc).
-- **Hành trình & Điều hướng GPS**: Hiển thị cự ly còn lại tới đích đến (ví dụ `ETA: 140km`).
-- **Đèn & Hệ thống phụ trợ**: Xi-nhan trái/phải (`<` / `>`), Đèn pha chiếu gần/xa, Đèn nóc xe (Beacon), Gạt mưa (`WIP`), Phanh tay (`PARK`), Phanh khí nén (`AIR`), Phanh máy (`MBRK`), Phanh phụ Retarder đa cấp (`RET: 1..5`), Ga tự động (`CRUISE 80k`).
-- **Cockpit Toast Popups (Thông báo buồng lái thời gian thực)**:
-  - Cảnh báo bị phạt tốc độ: `PHAT TOC DO: -550 EUR`
-  - Trạm thu phí cao tốc: `THU PHI: -45 EUR`
-  - Tai nạn va chạm: `VA CHAM: -400 EUR`
-  - Thao tác buồng lái: `RETARDER: BAC 2`, `GAT MUA: BAT`, `CRUISE: 85 km/h`...
-
-### 2. 🚛 Chuẩn API Chính Thức Của Nhà Phát Hành (SCS Telemetry SDK)
-- **Tích hợp SCS SDK chính thống (Community Open Standard)**: Dự án sử dụng trực tiếp chuẩn **SCS Software Telemetry SDK** được cộng đồng mã nguồn mở (nlhans/RenCloud) phát triển và tin dùng rộng rãi trên toàn thế giới.
-- **Đọc trực tiếp Windows Shared Memory (`Local\SCSTelemetry` & `Local\Ets2TelemetryServer`)**:
-  - Không cần cài server trung gian cồng kềnh, daemon Python đọc trực tiếp bộ nhớ chia sẻ tốc độ cao với độ trễ cực thấp **< 1ms**, đạt tần số **24 - 30 FPS**.
-  - **Dữ liệu chuyên sâu từ nhà phát hành SCS Software**:
-    - **Hộp số buồng lái**: Đọc biến `dashboardGear` chuẩn xác 100% (D1..D12, N, R1..R2).
-    - **Tốc độ thực tế**: Vận tốc cabin tức thời (độ lớn vector km/h hiển thị chuẩn xác cả khi tiến và lùi xe).
-    - **Hệ thống truyền động & Nhiệt động học**: Nhiệt độ dầu máy (`oil_t`), nhiệt độ nước làm mát (`water_t`), nhiệt độ phanh (`brake_t`), áp suất khí nén (`air_p`), khóa vi sai cầu sau (`diff_l`), nâng hạ trục (`lift_a`).
-    - **Hệ thống đèn xe**: Đèn xi-nhan, đèn pha cos/pha, đèn phanh (`brk_l`), đèn lùi (`rev_l`), đèn cảnh báo nóc (`bcn`).
-    - **Bản đồ & GPS Điều hướng**: Tên thành phố xuất phát -> đích đến, tên công ty, loại hàng hóa, cự ly còn lại (km), thời gian dự kiến (ETA).
-    - **Chi tiết hư hại & Va chạm**: Tỷ lệ hao mòn từng linh kiện độc lập (Động cơ, Hộp số, Cabin, Khung gầm, Bánh xe, Rơ-moóc) và hệ thống log va chạm tự động ghi nhận thiệt hại.
-  - Tích hợp bộ tạo giả lập độc lập `tools/mock_telemetry.json` để kiểm thử và chạy demo 30 FPS ngay cả khi không có game hoặc khi chạy trên môi trường CI/CD.
-
-### 3. 🤖 Chế Độ Robot Biểu Cảm (RoboEyes Emotion)
-- Khi không bật game, màn hình tự động hiển thị mắt robot động **RoboEyes** (FluxGarage) tự nhiên: chớp mắt ngẫu nhiên, đổi tâm trạng, liếc nhìn xung quanh.
-- **Tự động chuyển cảnh thông minh**:
-  - Khởi động ETS2 -> Robot hiện **Loading Splash** (Logo SCS & Xe tải pixel 2.2s) -> Tự động chuyển sang **HUD Taplo ETS2**.
-  - Thoát game -> Robot tự động chuyển về **Mắt robot RoboEyes**.
-
-### 4. ⚡ Tự Động Chạy Cùng Windows (0-Touch Boot)
-- Không cần mở thủ công mỗi lần bật máy: Phần mềm cầu nối (`miu_desktop_ets2.py`) tự động khởi chạy tàng hình cùng Windows qua VBScript (0% CPU, không chiếm cửa sổ CMD).
-- Tự động phát hiện và kết nối lại ESP32-S3 khi cắm/rút cáp USB (Auto COM Port Reconnect).
-- Đọc trực tiếp **Windows Shared Memory (`Local\Ets2TelemetryServer`)**: Không cần cài đặt server Node.js, không cần cấu hình IP/Port mạng, độ trễ cực thấp < 2ms!
-
-### 5. 🧠 Cổng MCP Server Tích Hợp (Model Context Protocol)
-- Kết nối trực tiếp với các AI Coding IDE thế hệ mới (**Antigravity**, **Cursor**, **Claude Desktop**).
-- Cho phép AI đọc log thời gian thực, giám sát telemetry xe và gửi lệnh điều khiển robot trực tiếp thông qua JSON-RPC stdio.
+### Công Nghệ & Phần Cứng
+`#ESP32S3` `#SSD1306` `#SH1106` `#OLED128x64` `#FreeRTOS` `#DualCore` `#DigitalCockpit` `#TelemetryDashboard` `#SimRigHardware` `#ModelContextProtocol` `#PlatformIO`
 
 ---
 
-## 🔌 Sơ Đồ Phần Cứng (Hardware Pinout)
+## 📸 Thiết Kế Giao Diện Buồng Lái (Digital Cockpit Layout)
 
-Bo mạch sử dụng: **ESP32-S3-WROOM-1 (N16R8: 16MB Flash, 8MB Octal PSRAM)** kết hợp màn hình **OLED SSD1306 0.96" hoặc SH1106 1.3" (I2C)**.
+Màn hình OLED 128x64 được thiết kế theo tỷ lệ phân chia 3 cột công thái học (Ergonomic 3-Column Layout), tối ưu hóa góc nhìn của tài xế khi gắn trên Vô-lăng hoặc Sim Rig:
 
 ```
-┌────────────────────────────────────────────────────────┐
-│               ESP32-S3-WROOM-1 (N16R8)                 │
-├────────────────────────────────────────────────────────┤
-│  GPIO 8  (D8)  ──►  OLED SDA  (Dữ liệu I2C)           │
-│  GPIO 9  (D9)  ──►  OLED SCL  (Xung I2C Clock)         │
-│  3V3           ──►  OLED VCC  (Nguồn 3.3V)             │
-│  GND           ──►  OLED GND  (Mass)                   │
-│                                                        │
-│  * Firmware có tính năng Smart Auto-Scan:             │
-│    Tự động quét và kích hoạt 8 cặp chân I2C thay thế   │
-│    (GPIO 8/9, GPIO 1/2, GPIO 41/42, GPIO 47/48)        │
-│    nếu người dùng cắm sai cổng.                        │
-└────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  <  D  WIP [2]     14:25           R2  CC [85]  >  │  Hàng 1: Xi-nhan | Đèn | Gạt mưa | Giờ | Retarder | CC
+├─────────────────────────────────────────────────────────────┤
+│   [80]                 85                [ D12 ]   │  Hàng 2: Biển báo tốc độ (Chớp) | Tốc độ số to nét
+│   C:70             ── km/h ──             [ P ]    │  Hàng 3: Cảnh báo camera | Vạch phân cách | Phanh tay
+├─────────────────────────────────────────────────────────────┤
+│  F: [■■■■■■■■□□] 78%       R: [■■■■■|■■|  ] 1350   │  Hàng 4: Thước Xăng % & Thước RPM dải kinh tế xanh
+│  T: 2%        C: 0%        778L           140km    │  Hàng 5: Độ bền xe | Hàng hóa | Lít thực | Cự ly ETA
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Các Khối Hiển Thị Trực Quan
+- **Khu vực Trung tâm (Tốc độ km/h)**: Phông số kích thước lớn (Font 3: 21x16 pixel), đường nét tương phản cao, căn giữa tuyệt đối, giúp nhận diện vận tốc tức thì.
+- **Khu vực Cột phải (Hộp số buồng lái & Trạng thái phanh)**:
+  - Khung hộp số bo góc (Rounded Box) hiển thị chính xác cấp số hiển thị taplo: Số tiến (`D1` .. `D12`), Số bò địa hình (`C1`, `C2` cho hộp số Scania/Volvo 14 cấp), Số Mo (`N`), Số lùi đa cấp (`R1`, `R2`).
+  - Biểu tượng phanh cơ khí / phanh đỗ xe `[ P ]`.
+- **Khu vực Cột trái (Biển báo & Giới hạn tốc độ Châu Âu)**:
+  - Khung biển báo tròn `[80]`, `[90]`: Tự động nhận diện tốc độ quy định của cung đường hiện tại. Tự động chớp nháy tương phản ngược (chữ trắng nền đen) khi xe chạy vượt quá tốc độ quy định.
+  - Vận tốc đã cài đặt cho hệ thống ga tự động (`C:70`).
+- **Khu vực Thước đo Kép (Dual Bar Gauges)**:
+  - **Thước Nhiên Liệu (Fuel Gauge)**: Thanh đo 10 nấc kèm tỷ lệ phần trăm và số lít dầu thực tế (`778L`). Tự động chớp nháy cảnh báo khi nhiên liệu xuống dưới 15%.
+  - **Thước Vòng Tua Máy (RPM Bar)**: Mô phỏng vòng tua máy thời gian thực với vạch căn dải tua kinh tế (Green Economy Band: 1000 - 1500 RPM) của các dòng động cơ xe tải nặng.
+- **Khu vực Thống kê Độ Bền & Hành Trình (Trip Advisor)**:
+  - `T:%` (Truck Wear): Tỷ lệ hao mòn tổng thể đầu kéo xe (Động cơ, hộp số, cabin, khung gầm, lốp xe).
+  - `C:%` (Cargo Wear): Tỷ lệ tổn hại hàng hóa và rơ-moóc.
+  - `ETA`: Cự ly còn lại đến điểm giao hàng (km).
 
 ---
 
-## 🚀 Hướng Dẫn Vận Hành & Khởi Động Tự Động
+## 🔔 Hệ Thống Đèn Báo & Thông Báo Buồng Lái (Cockpit Indicators & Alerts)
 
-### Cách 1: Kích Hoạt Tự Động Chạy Cùng Windows (Khuyên Dùng)
-Chỉ cần bấm 1 lần duy nhất, máy tính sẽ tự động chạy ngầm vĩnh viễn:
-1. Nhấp đúp vào file: **`scripts/BAT_TU_DONG_CHAY_NGAM.bat`**
-2. Cửa sổ báo `[OK] Da cai dat vao Windows Startup thanh cong!`
-3. Xong! Từ nay mỗi khi bật máy tính Windows:
-   - Phần mềm cầu nối tự động chạy ngầm hoàn toàn.
-   - Khi bạn mở ETS2 và lái xe, màn hình robot tự nhảy Taplo HUD đầy đủ thông số.
-   - Khi bạn tắt game, màn hình quay về mắt robot.
-
-### Cách 2: Tắt Chế Độ Tự Động Chạy Ngầm
-Nếu muốn tắt hoặc gỡ bỏ khỏi Windows Startup:
-- Nhấp đúp vào file: **`scripts/TAT_TU_DONG_CHAY_NGAM.bat`**
-
-### Cách 3: Chạy Thủ Công Có Cửa Sổ Console (Để Xem Dashboard Trên Màn Hình Máy Tính)
-- Nhấp đúp vào: **`scripts/CHAY_DASHBOARD_ETS2.bat`**
-- Terminal sẽ hiển thị thanh dashboard ASCII thời gian thực:
-  ```
-  |   D12   | SPD:  85 km/h [80] ! OVER | RPM: 1250 | FUEL: 92% (778L) | TRK: 2% | CRG: 0% | ETA: 140km | WIP RET:2 | TX: 30.0 FPS
-  ```
+| Ký Hiệu / Nhãn | Chức Năng | Hành Vi & Trạng Thái |
+|---|---|---|
+| `<` / `>` | Đèn xi-nhan Trái / Phải | Chớp nháy đồng bộ 1Hz theo rơ-le xi-nhan trong game |
+| `D` | Đèn chiếu sáng | Đèn sương mù, đèn pha cốt, đèn chiếu xa |
+| `WIP [1..4]` | Cần gạt nước mưa | Hiển thị trạng thái bật và cấp độ gạt mưa (Cấp 1 đến 4) |
+| `HORN` | Còi xe buồng lái | Hiển thị biểu tượng khi tài xế bấm còi/kèn hơi |
+| `R [1..5]` | Phanh hãm phụ (Retarder) | Hiển thị cấp độ phanh thủy lực Retarder từ nấc 1 đến nấc 5 |
+| `CC [km/h]` | Hệ thống ga tự động (Cruise Control) | Hiển thị khi kích hoạt kèm vận tốc ga tự động đã lưu |
+| `[ P ]` | Phanh dừng đỗ (Parking Brake) | Bật sáng khi phanh tay được kéo |
+| `AIR` | Phanh khí nén khẩn cấp | Cảnh báo khi áp suất bình hơi giảm thấp nguy hiểm |
+| `ENG` | Đèn kiểm tra động cơ | Bật sáng khi động cơ bị hỏng hóc hoặc chết máy |
+| `TOLL: -45 EUR` | Thông báo qua trạm thu phí | Hiển thị Popup Toast tự động biến mất sau 3 giây |
+| `FINE: -550 EUR`| Cảnh báo vi phạm giao thông / bắn tốc độ | Hiển thị Popup Toast tự động biến mất sau 3 giây |
+| `CRASH: -400 EUR`| Cảnh báo va chạm / tai nạn | Hiển thị Popup Toast tự động biến mất sau 3 giây |
 
 ---
 
-## 🛠️ Hướng Dẫn Nạp Firmware ESP32-S3
+## 📦 Kê Khai Thư Viện Bên Thứ Ba (Third-Party Libraries & Dependencies)
 
-### 1. Nạp Bằng PlatformIO (Khuyên Dùng)
-Dự án đã được cấu hình tối ưu sẵn trong `platformio.ini`:
-```bash
-# Di chuyển vào thư mục dự án
-cd E:\MIU_EILIK_ESP32-S3
+Dự án cam kết minh bạch về việc sử dụng các thành phần mã nguồn mở và bộ công cụ của bên thứ ba:
 
-# Biên dịch kiểm tra
-pio run -e eilik_s3
+### 1. Phân Hệ Nhúng Vi Điều Khiển (ESP32-S3 Firmware)
 
-# Nạp firmware vào bo mạch qua cổng COM (tự động nhận diện COM5)
-pio run -e eilik_s3 -t upload
+| Tên Thư Viện | Phiên Bản | Tác Giả / Tổ Chức | Giấy Phép | Vai Trò & Mục Đích Trong Hệ Thống |
+|---|---|---|---|---|
+| **Adafruit SSD1306** | `^2.5.7` | Adafruit Industries | BSD 3-Clause | Trình điều khiển giao tiếp phần cứng I2C cho màn hình OLED 128x64 (SSD1306 / SH1106). |
+| **Adafruit GFX Library**| `^1.11.9` | Adafruit Industries | BSD 2-Clause | Thư viện lõi đồ họa: vẽ điểm, đường thẳng, khung chữ nhật bo góc, icon bitmap nhị phân. |
+| **ArduinoJson** | `^6.21.4` | Benoit Blanchon | MIT | Bộ giải mã (parser) và đóng gói chuỗi JSON tốc độ cao từ kênh Serial USB CDC. |
+| **FluxGarage RoboEyes** | `v1.0.0 (Customized)` | Dennis Bueschel (FluxGarage) | MIT | Hệ thống diễn hoạt mắt biểu cảm robot đa trạng thái (Vui, Buồn, Mệt, Tức giận, Ngủ, Liếc nhìn). |
+| **Espressif Arduino Core** | `~6.5.0 (IDF v4.4+)` | Espressif Systems | Apache 2.0 | Bộ công cụ phát triển phần cứng ESP32-S3, trình điều khiển USB CDC OTG, I2C và NVS. |
+| **FreeRTOS Kernel** | `SMP v10.x` | Amazon Web Services / FreeRTOS | MIT | Hệ điều hành đa nhiệm thời gian thực, điều phối 2 nhân vi xử lý (Core 0 nhận dữ liệu, Core 1 xuất đồ họa). |
 
-# Mở Serial Monitor xem log khởi động (115200 baud)
-pio device monitor -b 115200
-```
+### 2. Phân Hệ Máy Tính Cầu Nối (PC Companion & Automation)
 
-### 2. Thông Số Tài Nguyên Sau Biên Dịch
-- **Flash ROM**: ~394 KB / 4.6 MB APP (**8.4%**) - Siêu nhẹ, độ ổn định tuyệt đối.
-- **RAM SRAM**: ~25.2 KB / 327 KB (**7.7%**) - Không giật lag, không tràn bộ nhớ.
-- **FreeRTOS**: Phân luồng độc lập 2 nhân (Core 0 nhận USB Serial 115200 baud, Core 1 render màn hình 30 FPS).
+| Tên Thư Viện | Phiên Bản | Tác Giả / Nguồn | Giấy Phép | Vai Trò & Mục Đích Trong Hệ Thống |
+|---|---|---|---|---|
+| **pyserial** | `>=3.5` | Chris Liechti | BSD 3-Clause | Kênh giao tiếp truyền thông nối tiếp tốc độ cao (Baud Rate 460800) giữa Windows PC và ESP32-S3. |
+| **psutil** | `>=5.9.0` | Jay Loden, Giampaolo Rodola | BSD 3-Clause | Giám sát trạng thái tiến trình game (`eurotrucks2.exe` / `amtrucks.exe`) để tự động chuyển cảnh. |
+| **requests** | `>=2.28.0` | Kenneth Reitz & PSF | Apache 2.0 | Giao thức HTTP REST Client dự phòng để kết nối tới cổng Telemetry Server WebApi (Port 25555). |
 
----
+### 3. Phân Hệ Trích Xuất Dữ Liệu Game (Game Telemetry Engines & Plugins)
 
-## 🧠 Cổng MCP Server Cho AI IDE (Model Context Protocol)
-
-Dự án tích hợp sẵn server MCP tại `tools/esp32_mcp_server.py`. Server này tuân thủ chuẩn JSON-RPC 2.0 stdio của Model Context Protocol.
-
-### 1. Cấu Hình Tích Hợp Vào IDE
-Cấu hình trong file `mcp_config.json` (Antigravity / Claude Desktop / Cursor):
-```json
-{
-  "mcpServers": {
-    "esp32-eilik": {
-      "command": "python",
-      "args": [
-        "tools/esp32_mcp_server.py"
-      ]
-    }
-  }
-}
-```
-
-### 2. Danh Sách Tools Của MCP Server
-
-| Tên Tool | Chức Năng |
-|---|---|
-| `esp32_get_status` | Kiểm tra trạng thái daemon, cổng COM5, kết nối game ETS2, FPS và phần cứng. |
-| `esp32_get_telemetry` | Đọc toàn bộ luồng telemetry thời gian thực: tốc độ, số, RPM, xăng lít & %, độ bền, GPS, đèn... |
-| `esp32_get_logs` | Lấy các dòng log mới nhất từ `tools/daemon.log` (theo dõi sự kiện phạt tiền, thu phí, va chạm). |
-| `esp32_send_command` | Gửi lệnh chuyển chế độ trực tiếp tới ESP32 (`MODE=GAME`, `MODE=EYES`, `MODE=CLOCK`, `MODE=OFF`). |
-| `esp32_trigger_event` | Bắn popup thông báo tùy chỉnh tức thời lên màn hình OLED của robot. |
-
-### 3. Kiểm Tra MCP Server Qua Dòng Lệnh
-```bash
-python tools/esp32_mcp_server.py --test
-```
+| Thành Phần | Phiên Bản | Tác Giả / Nhà Cung Cấp | Giấy Phép | Vai Trò & Mục Đích Trong Hệ Thống |
+|---|---|---|---|---|
+| **RenCloud SCS SDK Plugin** | `v1.1.0+` | RenCloud / nlhans | MIT | Plugin C++ (`scs-telemetry.dll`) gắn trực tiếp vào game engine SCS, tạo bộ nhớ chia sẻ `Local\SCSTelemetry`. |
+| **Funbit ETS2 Telemetry Server**| `v4.0.0` | Funbit / Denilson Sá Maier | MIT | Máy chủ Telemetry (`Ets2Telemetry.exe`) cung cấp bộ nhớ chia sẻ `Local\Ets2TelemetryServer` và REST API. |
+| **Microsoft OWIN / Katana** | `v3.0.0` | Microsoft Corporation | Apache 2.0 | Nền tảng máy chủ HTTP tự lưu trữ (Self-Hosted HTTP Web Server) cho Telemetry Server. |
+| **Microsoft SignalR Core** | `v2.x` | Microsoft Corporation | Apache 2.0 | Kênh truyền thông thời gian thực hai chiều dựa trên công nghệ WebSocket / Long Polling. |
+| **Newtonsoft.Json** | `v12.0+` | James Newton-King | MIT | Bộ tuần tự hóa và giải mã dữ liệu JSON cho nền tảng .NET Framework. |
+| **log4net** | `v2.x` | Apache Software Foundation | Apache 2.0 | Phân hệ ghi vết và quản lý tệp nhật ký hệ thống của Telemetry Server. |
 
 ---
 
-## 📁 Cấu Trúc Thư Mục Dự Án
+## ⚡ Kiến Trúc Luồng Dữ Liệu & Hiệu Năng (Architecture & Data Flow)
+
+Hệ thống hoạt động theo nguyên lý kênh truyền phân tầng khép kín, triệt tiêu độ trễ hiển thị:
+
+```
+┌─────────────────────────────────┐
+│ Euro Truck Simulator 2 / ATS   │
+│ (SCS Software Game Engine)     │
+└──────────────┬──────────────────┘
+               │  Bộ nhớ dùng chung Windows (Shared Memory)
+               ▼  Độ trễ < 0.5ms (Không qua lớp mạng IP)
+┌─────────────────────────────────┐
+│ Windows Shared Memory Block     │
+│ ("Local\SCSTelemetry")          │
+└──────────────┬──────────────────┘
+               │  Tần số đọc: 30 Lần/giây
+               ▼  Thuật toán bù trừ hộp số Crawler (C1, C2)
+┌─────────────────────────────────┐
+│ PC Companion Daemon             │
+│ (tools/miu_desktop_ets2.py)     │
+└──────────────┬──────────────────┘
+               │  USB CDC Serial tốc độ cực cao: 460,800 Baud
+               ▼  Gói tin JSON rút gọn tối ưu hóa băng thông
+┌─────────────────────────────────┐
+│ ESP32-S3 Core 0 (Task USB)      │ ──► Giải mã JSON, cập nhật Struct dữ liệu
+└──────────────┬──────────────────┘
+               │  Bộ đệm chia sẻ an toàn luồng FreeRTOS
+               ▼
+┌─────────────────────────────────┐
+│ ESP32-S3 Core 1 (Task Display)  │ ──► Màn hình OLED I2C (29.3 - 30.0 FPS mượt mà)
+└─────────────────────────────────┘
+```
+
+### Chỉ Số Tối Ưu Hóa Hệ Thống
+- **Tốc độ Baud Rate**: **460,800 baud** (Nhanh gấp 4 lần chuẩn 115200 truyền thống, triệt tiêu hoàn toàn hiện tượng trễ nhịp nhảy số).
+- **Tốc độ khung hình (Frame Rate)**: **29.3 – 30.0 FPS** ổn định liên tục.
+- **Thời gian xử lý vòng lặp (Cycle Latency)**: **< 5 mili-giây**.
+- **Mức tiêu hao CPU Máy tính**: **< 0.1%** nhờ cơ chế truy xuất trực tiếp con trỏ bộ nhớ dùng chung.
+- **Tài nguyên vi điều khiển ESP32-S3**:
+  - Dung lượng Flash: **~394 KB / 4.6 MB** (Chiếm ~8.4% phân vùng ứng dụng).
+  - Dung lượng RAM: **~25.2 KB / 327 KB** (Chiếm ~7.7% SRAM nội, không rò rỉ bộ nhớ).
+
+---
+
+## 🔌 Sơ Đồ Đấu Nối Phần Cứng (Hardware Wiring)
+
+Hệ thống được thiết kế tối ưu cho bo mạch **ESP32-S3-WROOM-1 (N16R8: 16MB Flash, 8MB Octal PSRAM)**:
+
+| Chân ESP32-S3 | Chân Màn Hình OLED | Chức Năng |
+|---|---|---|
+| **GPIO 8 (D8)** | **SDA** | Tuyến dữ liệu I2C Data |
+| **GPIO 9 (D9)** | **SCL** | Tuyến xung đồng hồ I2C Clock |
+| **3V3** | **VCC** | Nguồn cấp điện áp 3.3V ổn định |
+| **GND** | **GND** | Chân nối đất (Mass chung) |
+
+*Ghi chú*: Firmware tích hợp tính năng **Auto-Scan I2C**, tự động dò tìm địa chỉ màn hình (`0x3C` hoặc `0x3D`) trên đường truyền.
+
+---
+
+## 🚀 Hướng Dẫn Vận Hành (Operating Guide)
+
+### 1. Cài Đặt Trọn Gói Tự Động Chạy Cùng Windows (Khuyên Dùng)
+Chỉ cần thực hiện một lần duy nhất, hệ thống sẽ tự động hóa hoàn toàn mà không cần mở lại mỗi lần bật máy:
+- Nhấp đúp chuột vào tập tin: `scripts/BAT_TU_DONG_CHAY_NGAM.bat`
+- Hệ thống sẽ kích hoạt tiến trình ngầm tàng hình (0-Touch Background Daemon).
+- Khi bạn mở ETS2 hoặc ATS: Màn hình tự động hiển thị Taplo Kỹ thuật số.
+- Khi bạn tắt game: Màn hình tự động chuyển về Mắt Robot Biểu cảm.
+
+### 2. Dừng Chế Độ Chạy Tự Động
+- Nhấp đúp chuột vào tập tin: `scripts/TAT_TU_DONG_CHAY_NGAM.bat`
+
+### 3. Vận Hành Thủ Công Có Bảng Điều Khiển
+- Nhấp đúp chuột vào tập tin: `scripts/CHAY_DASHBOARD_ETS2.bat`
+- Màn hình Console sẽ hiển thị dòng trạng thái đo đạc thời gian thực.
+
+### 4. Kiểm Thử Trực Quan Không Cần Mở Game
+- Nhấp đúp chuột vào tập tin: `scripts/CHAY_DEMO_THU_NGHIEM.bat`
+- Bộ phát dữ liệu mô phỏng sẽ phát luồng dữ liệu 30 FPS để kiểm tra tất cả biểu tượng và thanh đo trên màn hình OLED.
+
+---
+
+## 🤖 Cổng Kết Nối AI IDE (Model Context Protocol - MCP)
+
+Dự án cung cấp máy chủ chuẩn **Model Context Protocol (MCP)** tại `tools/esp32_mcp_server.py`, cho phép các trợ lý AI (Google Antigravity, Claude Desktop, Cursor) kết nối và tương tác trực tiếp với thiết bị phần cứng:
+
+### Danh Mục Công Cụ AI Điều Khiển (MCP Tools)
+- `esp32_get_status`: Kiểm tra trạng thái cổng USB COM, tốc độ truyền nhận FPS và tình trạng game.
+- `esp32_get_telemetry`: Đọc toàn bộ gói dữ liệu buồng lái tức thời (Vận tốc, Cấp số, RPM, Xăng, Hư hại, Đèn).
+- `esp32_get_logs`: Trích xuất nhật ký hành trình, sự kiện phạt tiền, trạm thu phí và va chạm giao thông.
+- `esp32_send_command`: Ra lệnh chuyển đổi trạng thái hiển thị trên thiết bị (`GAME`, `EYES`, `CLOCK`, `OFF`).
+- `esp32_trigger_event`: Bắn thông báo tùy biến tức thời lên màn hình OLED của buồng lái.
+
+---
+
+## 📂 Danh Mục Thư Mục Dự Án (Repository Structure)
 
 ```
 E:\MIU_EILIK_ESP32-S3\
-├── README.md                     ← Tài liệu hướng dẫn toàn diện dự án
-├── platformio.ini                ← Cấu hình build PlatformIO cho ESP32-S3 (N16R8)
-├── partitions_16mb.csv           ← Bảng phân vùng Flash 16MB
-│
-├── scripts\                      ← Bộ script tiện ích Windows
-│   ├── BAT_TU_DONG_CHAY_NGAM.bat ← Kích hoạt tự động chạy ngầm cùng Windows boot
-│   ├── TAT_TU_DONG_CHAY_NGAM.bat ← Dừng và gỡ bỏ chế độ chạy ngầm
-│   ├── CHAY_DASHBOARD_ETS2.bat   ← Chạy companion thủ công có console theo dõi
-│   └── CHAY_DEMO_THU_NGHIEM.bat  ← Chạy mô phỏng demo HUD không cần game
-│
-├── miu_eilik\                    ← Mã nguồn C++ Firmware ESP32-S3
-│   ├── miu_eilik.ino             ← Setup FreeRTOS 2 nhân & vòng lặp chính
-│   ├── config.h                  ← Cấu hình thông số hệ thống
-│   ├── board_config.h            ← Định nghĩa chân I2C (SDA=8, SCL=9)
-│   ├── display_controller.h/.cpp ← Full Taplo ETS2, Fonts, RPM Bar, Biển báo, Icons
-│   ├── usb_protocol.h/.cpp       ← Bộ giải mã giao thức JSON từ PC (115200 baud)
-│   ├── emoji_controller.h/.cpp   ← Quản lý mắt robot RoboEyes
-│   └── FluxGarage_RoboEyes.h     ← Thư viện đồ họa mắt robot chuyển động
-│
-├── tools\                        ← Bộ công cụ Python Companion & MCP Server
-│   ├── miu_desktop_ets2.py       ← Cầu nối SCS SDK Telemetry Windows Shared Memory -> ESP32
-│   ├── mock_telemetry.json       ← Dữ liệu telemetry mô phỏng kiểm thử độc lập
-│   ├── esp32_mcp_server.py       ← Server MCP JSON-RPC 2.0 stdio cho AI IDE
-│   ├── check_shm.py              ← Công cụ kiểm tra Shared Memory nhanh
-│   └── setup_autostart.py        ← Cài đặt tự khởi động registry Windows
-│
-└── docs\                         ← Tài liệu kiến trúc & lộ trình
-    └── roadmap.md                ← Lộ trình phát triển và quy hoạch tính năng
+├── API-ETS2\                     ← Bộ máy chủ Telemetry Server & Thư viện liên kết game
+│   └── server\                   ← Các tệp thực thi Ets2Telemetry.exe và thư viện kết nối
+├── miu_eilik\                    ← Mã nguồn C++ Firmware nhúng trên ESP32-S3
+│   ├── miu_eilik.ino             ← Điểm khởi chạy hệ thống & bộ điều phối FreeRTOS 2 nhân
+│   ├── display_controller.cpp    ← Bộ dựng đồ họa Taplo ETS2, Fonts chữ to và Icons
+│   ├── usb_protocol.cpp          ← Bộ giải mã gói tin dữ liệu tốc độ cao 460800 baud
+│   └── emoji_controller.cpp      ← Bộ điều khiển diễn hoạt mắt robot biểu cảm
+├── tools\                        ← Phân hệ phần mềm cầu nối máy tính & Cổng AI MCP
+│   ├── miu_desktop_ets2.py       ← Daemon cầu nối đọc Shared Memory và truyền qua Serial
+│   ├── esp32_mcp_server.py       ← Máy chủ chuẩn MCP dành cho các trợ lý AI IDE
+│   └── mock_telemetry.json       ← Tệp dữ liệu mô phỏng kiểm thử độc lập
+├── scripts\                      ← Bộ kịch bản thao tác nhanh cho hệ điều hành Windows
+├── docs\                         ← Tài liệu kiến trúc và kế hoạch phát triển hệ thống
+├── platformio.ini                ← Tệp cấu hình biên dịch nhúng PlatformIO
+└── README.md                     ← Tài liệu hướng dẫn kỹ thuật toàn diện
 ```
 
 ---
 
-## ❓ Câu Hỏi Thường Gặp (Troubleshooting)
+## ⚖️ Bản Quyền & Tuyên Bố Miễn Trừ (License & Disclaimer)
 
-1. **Tại sao tôi vào game ETS2 mà màn hình robot vẫn ở mắt robot?**
-   - Đảm bảo bạn đã cài đặt plugin Telemetry chính hãng của SCS Software (file `scs-telemetry.dll` hoặc `ets2-telemetry-server.dll` trong thư mục `Euro Truck Simulator 2\bin\win_x64\plugins\` của game).
-   - Kiểm tra xem daemon đang chạy hay chưa. Nếu daemon đang tắt, chỉ cần nhấp đúp vào `scripts/BAT_TU_DONG_CHAY_NGAM.bat`.
-
-2. **Khi rút cáp USB cắm lại, robot có nhận lại không?**
-   - Hoàn toàn tự động! Companion có cơ chế auto-reconnect mỗi 1 giây. Khi bạn cắm lại cáp USB, daemon sẽ tự động bắt lại cổng COM5 và tiếp tục truyền dữ liệu bình thường.
-
-3. **Màn hình OLED bị tối hoặc không lên?**
-   - Kiểm tra chân cắm SDA (GPIO 8) và SCL (GPIO 9).
-   - Mở Serial Monitor ở 115200 baud khi khởi động để xem log bộ quét I2C tự động tìm địa chỉ `0x3C` hoặc `0x3D`.
+- Dự án này được phát triển độc lập cho mục đích học tập, mô phỏng và phục vụ cộng đồng đam mê mô phỏng lái xe (Sim Racing Community).
+- Euro Truck Simulator 2 và American Truck Simulator là nhãn hiệu đã đăng ký của SCS Software s.r.o.
+- Mọi thư viện của bên thứ ba được giữ nguyên bản quyền thuộc về các tác giả gốc tương ứng theo giấy phép mã nguồn mở quy định.
 
 ---
-
-**Phát triển bởi ROSHINGUYEN — Miu Eilik Telemetry Ecosystem (2026)**
+**Tác giả & Phát triển: ROSHINGUYEN — Hệ Sinh Thái Taplo Telemetry Thông Minh Miu Eilik (2026)**

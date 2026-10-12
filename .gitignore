@@ -46,10 +46,15 @@ tools/mcp_command.txt
 tools/daemon.log
 tools/daemon_err.log
 
-# Proprietary Game Binaries & Telemetry Server (Khong commit len GitHub de tranh ban quyen)
-API-ETS2/
+# Game Telemetry Server Binaries (Whitelisted for deployment)
+!API-ETS2/
+!API-ETS2/**
+API-ETS2/**/*.log
+API-ETS2/server/*.log
 *.exe
 *.dll
+!API-ETS2/**/*.exe
+!API-ETS2/**/*.dll
 
 # Temporary test dumps & scratch files
 scratch/
