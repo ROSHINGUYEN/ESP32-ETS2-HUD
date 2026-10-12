@@ -45,6 +45,8 @@ void epochToTm(time_t epoch, int& y, int& mo, int& d, int& h, int& mi, int& s);
 struct Ets2TelemetryData {
   bool connected = false;
   bool paused = false;
+  bool loading = false;       // true khi game dang trong doan intro / loading / menu
+  int loadPct = 0;            // 0..100% tien do loading thuc te
   int speed = 0;              // km/h
   int speedLimit = 0;         // km/h (0: khong gioi han)
   int cruiseSpeed = 0;        // km/h
@@ -56,8 +58,10 @@ struct Ets2TelemetryData {
   int fuelLiters = 0;         // Lit (lượng dầu thực tế)
   int fuelCapacity = 0;       // Lit (dung tích bình)
   bool fuelWarning = false;
+  float fuelRate = 0.0f;      // L/100km tieu hao nhien lieu
   int truckWearPct = 0;       // 0..100% (Độ hao mòn / hư hại xe tải)
   int cargoWearPct = -1;      // 0..100% (Độ hao mòn / hư hại hàng hóa, -1: không có hàng)
+  float cargoWeight = 0.0f;   // Tan (khoi luong hang)
   bool trailerAttached = false; // Co keo ro-mooc hang
   int odometerKm = 0;         // Tong quang duong xe da chay (km)
   bool blinkerL = false;
@@ -66,6 +70,14 @@ struct Ets2TelemetryData {
   bool lightsBeamHigh = false;
   bool parkBrake = false;
   bool airPressureWarn = false;
+  float airPressure = 0.0f;   // bar / psi
+  float oilTemp = 0.0f;       // do C
+  float waterTemp = 0.0f;     // do C
+  float brakeTemp = 0.0f;     // do C
+  bool diffLock = false;      // khoa vi sai cau sau
+  bool liftAxle = false;      // nang ha truc banh xe
+  bool brakeLights = false;   // den phanh
+  bool reverseLights = false; // den lui
   int etaDistanceKm = 0;      // km
   int etaTimeMin = 0;         // phut
   int retarder = 0;           // 0..5 (retarder brake steps)

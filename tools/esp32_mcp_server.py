@@ -93,7 +93,7 @@ class DirectShmReader:
             fwd_gears = struct.unpack_from("<i", raw, 68)[0]
             nav_d = struct.unpack_from("<f", raw, 1000)[0] / 1000.0
             nav_lim = struct.unpack_from("<f", raw, 1008)[0] * 3.6
-            spd_kmh = max(0, int(round(speed_ms * 3.6)))
+            spd_kmh = int(round(abs(speed_ms) * 3.6))
 
             # Doc gearDashboard tu Local\SCSTelemetry neu co
             final_gear = None

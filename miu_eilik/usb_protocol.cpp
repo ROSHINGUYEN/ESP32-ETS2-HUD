@@ -61,7 +61,7 @@ void UsbLink::update() {
 }
 
 void UsbLink::processJson(const char* json, size_t len) {
-  StaticJsonDocument<1536> doc;
+  StaticJsonDocument<2048> doc;
   DeserializationError err = deserializeJson(doc, json, len);
   if (err != DeserializationError::Ok) {
     LOG_PRINTF("[JSON ERR] %s (len=%u)\n", err.c_str(), (unsigned int)len);
@@ -73,6 +73,8 @@ void UsbLink::processJson(const char* json, size_t len) {
     Ets2TelemetryData t;
     t.connected = doc.containsKey("conn") ? (doc["conn"].as<int>() != 0) : false;
     t.paused = doc.containsKey("pause") ? (doc["pause"].as<int>() != 0) : false;
+    t.loading = doc.containsKey("load") ? (doc["load"].as<int>() != 0) : false;
+    t.loadPct = doc["load_pct"] | 0;
     t.speed = doc["spd"] | 0;
     t.speedLimit = doc["lim"] | 0;
     t.cruiseSpeed = doc["cc"] | 0;
@@ -84,8 +86,10 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.fuelLiters = doc["fuel_l"] | 0;
     t.fuelCapacity = doc["fuel_cap"] | 0;
     t.fuelWarning = (doc["fuel_warn"].as<int>() != 0);
+    t.fuelRate = doc["fuel_r"] | 0.0f;
     t.truckWearPct = doc.containsKey("trk_w") ? doc["trk_w"].as<int>() : (int)round(doc["wear"].as<float>() * 100.0f);
     t.cargoWearPct = doc.containsKey("crg_w") ? doc["crg_w"].as<int>() : -1;
+    t.cargoWeight = doc["crg_wgt"] | 0.0f;
     t.trailerAttached = (doc["trl_on"].as<int>() != 0);
     t.odometerKm = doc["odo"] | 0;
     t.blinkerL = (doc["bl_l"].as<int>() != 0);
@@ -94,6 +98,14 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.lightsBeamHigh = (doc["high"].as<int>() != 0);
     t.parkBrake = (doc["park"].as<int>() != 0);
     t.airPressureWarn = (doc["air"].as<int>() != 0);
+    t.airPressure = doc["air_p"] | 0.0f;
+    t.oilTemp = doc["oil_t"] | 0.0f;
+    t.waterTemp = doc["water_t"] | 0.0f;
+    t.brakeTemp = doc["brake_t"] | 0.0f;
+    t.diffLock = (doc["diff_l"].as<int>() != 0);
+    t.liftAxle = (doc["lift_a"].as<int>() != 0);
+    t.brakeLights = (doc["brk_l"].as<int>() != 0);
+    t.reverseLights = (doc["rev_l"].as<int>() != 0);
     t.etaDistanceKm = doc["eta_d"] | 0;
     t.etaTimeMin = doc["eta_t"] | 0;
     t.retarder = doc["ret"] | 0;

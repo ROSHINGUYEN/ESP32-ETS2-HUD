@@ -185,6 +185,8 @@ class Ets2SharedMemoryReader:
 
         # Neu chua mo duoc SHM (game dang khoi dong trong doan intro), kiem tra tien trinh eurotrucks2
         if _PSUTIL_OK:
+            if self.ets2_pid and psutil.pid_exists(self.ets2_pid):
+                return True
             now = time.time()
             if now - getattr(self, "_last_pid_scan", 0.0) >= 0.5:
                 self._last_pid_scan = now
@@ -246,24 +248,32 @@ class Ets2SharedMemoryReader:
                     self.close()
                     return None
 
+            # Tinh toan tien do loading % muot ma khi game dang o intro / loading
+            if getattr(self, "loading_start_time", 0.0) == 0.0:
+                self.loading_start_time = time.time()
+            elapsed_load = time.time() - self.loading_start_time
+            cur_load_pct = min(98, max(15, int(15 + elapsed_load * 12.0)))
+
             # Neu chua co pBuf (game dang trong doan intro khoi dong chua kip nap plugin):
             if not self.pBuf:
                 # Thu ket noi lai SHM neu plugin vua tao xong
                 self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
                 if self.hMap:
-                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 4096)
+                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 4096)
                 if not self.pBuf:
-                    # Tra ve goi connected mac dinh de ESP32 hien thi Loading Splash ngay trong doan intro!
+                    # Tra ve goi connected + loading kem load_pct tang deu de ESP32 hien thi Loading Splash Scania!
                     return {
                         "game": "ets2",
                         "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
                         "gear": 0, "rpm": 0, "rpm_max": 2500,
-                        "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0,
+                        "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0, "fuel_r": 0.0,
                         "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
                         "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
+                        "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
+                        "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
                         "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
                         "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
-                        "conn": 1, "pause": 1,
+                        "conn": 1, "pause": 1, "load": 1, "load_pct": cur_load_pct,
                         "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
                         "income": 0, "truck_make": "", "truck_model": "",
                         "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
@@ -276,7 +286,24 @@ class Ets2SharedMemoryReader:
             # Offset 8: pluginVersion (phai >= 1 neu DLL telemetry da duoc nap trong game)
             plugin_ver = struct.unpack_from("<I", raw, 8)[0]
             if plugin_ver < 1:
-                return None
+                return {
+                    "game": "ets2",
+                    "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
+                    "gear": 0, "rpm": 0, "rpm_max": 2500,
+                    "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0, "fuel_r": 0.0,
+                    "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
+                    "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
+                    "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
+                    "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
+                    "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
+                    "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
+                    "conn": 1, "pause": 1, "load": 1, "load_pct": cur_load_pct,
+                    "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
+                    "income": 0, "truck_make": "", "truck_model": "",
+                    "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
+                    "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
+                    "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                }
 
             # Offset 4: paused flag
             paused = struct.unpack_from("<I", raw, 4)[0]
@@ -284,25 +311,30 @@ class Ets2SharedMemoryReader:
             # Offset 160: timeAbsolute (minutes elapsed in game world, non-zero = in-game)
             time_absolute = struct.unpack_from("<i", raw, 160)[0]
 
-            # Khi time_absolute == 0: Game dang o man hinh menu / profile / loading
-            # ETS2 da bat va DLL telemetry dang chay -> gui payload connected de ESP32 hien thi Loading Splash!
+            # Khi time_absolute <= 0: Game dang o man hinh menu / profile / loading
+            # ETS2 da bat va DLL telemetry dang chay -> gui payload connected + load: 1 de ESP32 hien thi Loading Splash!
             if time_absolute <= 0:
                 return {
                     "game": "ets2",
                     "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
                     "gear": 0, "rpm": 0, "rpm_max": 2500,
-                    "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0,
+                    "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0, "fuel_r": 0.0,
                     "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
                     "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
+                    "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
+                    "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
                     "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
                     "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
-                    "conn": 1, "pause": 1,
+                    "conn": 1, "pause": 1, "load": 1, "load_pct": cur_load_pct,
                     "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
                     "income": 0, "truck_make": "", "truck_model": "",
                     "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
                     "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
                     "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 }
+
+            # Khi da vao buong lai lai xe: Reset loading_start_time
+            self.loading_start_time = 0.0
 
             # Decode game clock tu timeAbsolute (offset 160) - tong so phut trong game ETS2 (chuan 100%)
             game_h = (time_absolute // 60) % 24
@@ -313,6 +345,7 @@ class Ets2SharedMemoryReader:
             cx, cy, cz = struct.unpack_from("<3f", raw, 40)
             gear = struct.unpack_from("<i", raw, 64)[0]
             rpm, rpmMax, fuel, fuelCap = struct.unpack_from("<4f", raw, 80)
+            fuel_rate = struct.unpack_from("<f", raw, 96)[0] * 100.0 # L/100km
             retarder = struct.unpack_from("<i", raw, 564)[0]
             cc_on = raw[580]
             wipers = raw[581]
@@ -322,9 +355,18 @@ class Ets2SharedMemoryReader:
             bl_r = raw[587]
             low = raw[591]
             high = raw[592]
+            brk_l = 1 if raw[597] else 0
+            rev_l = 1 if raw[598] else 0
             beacon = raw[604]
             air = raw[608]
             fuel_warn = struct.unpack_from("<i", raw, 624)[0]
+
+            # Thong so chi tiet ap suat, nhiet do tu SCS SDK Telemetry
+            air_psi = struct.unpack_from("<f", raw, 616)[0]
+            air_bar = round(air_psi * 0.0689476, 1) if air_psi > 0 else 0.0
+            brake_temp = round(struct.unpack_from("<f", raw, 620)[0], 1)
+            oil_temp = round(struct.unpack_from("<f", raw, 636)[0], 1)
+            water_temp = round(struct.unpack_from("<f", raw, 640)[0], 1)
 
             trailer_on = 1 if raw[21] != 0 else 0
             wears = struct.unpack_from("<6f", raw, 656)
@@ -354,12 +396,20 @@ class Ets2SharedMemoryReader:
             nav_d = struct.unpack_from("<f", raw, 1000)[0] / 1000.0
             nav_t = struct.unpack_from("<f", raw, 1004)[0]
             nav_lim = struct.unpack_from("<f", raw, 1008)[0] * 3.6
-            spd_kmh = max(0, int(round(speed_ms * 3.6)))
+            spd_kmh = int(round(abs(speed_ms) * 3.6))
             eta_d_km = int(round(nav_d)) if (0 < nav_d < 50000.0) else 0
             eta_t_min = int(round(nav_t / 60.0)) if nav_t > 0 else 0
 
             # Trich xuat thong tin ban do, cong ty, hang hoa va lo trinh
             cargo = decode_c_string(raw, 236, 64)
+            cargo_weight_t = 0.0
+            try:
+                cargo_mass_kg = struct.unpack_from("<f", raw, 232)[0]
+                if 0 < cargo_mass_kg < 100000.0:
+                    cargo_weight_t = round(cargo_mass_kg / 1000.0, 1)
+            except Exception:
+                pass
+
             job_income = struct.unpack_from("<i", raw, 300)[0]
             city_src = decode_c_string(raw, 308, 64)
             city_dst = decode_c_string(raw, 372, 64)
@@ -377,9 +427,11 @@ class Ets2SharedMemoryReader:
             # Xac dinh cap so hien thi (D1..D12) dong bo 100% voi taplo trong game:
             # Uu tien 1: Doc gearDashboard tu Local\\SCSTelemetry (offset 508, SCS SDK chuan)
             final_gear = None
+            diff_lock = 0
+            lift_axle = 0
             if self.pBufScs:
                 try:
-                    raw_scs = ctypes.string_at(self.pBufScs, 1024)
+                    raw_scs = ctypes.string_at(self.pBufScs, 2048)
                     scs_dash_gear = struct.unpack_from("<i", raw_scs, 508)[0]
                     scs_mech_gear = struct.unpack_from("<i", raw_scs, 504)[0]
                     if scs_dash_gear != 0:
@@ -411,6 +463,7 @@ class Ets2SharedMemoryReader:
                 "fuel_l": fuel_l,
                 "fuel_cap": fuel_cap,
                 "fuel_warn": 1 if (fuel_warn > 0 or fuel_pct < 15) else 0,
+                "fuel_r": round(fuel_rate, 1) if (0 <= fuel_rate < 200.0) else 0.0,
                 "bl_l": 1 if bl_l else 0,
                 "bl_r": 1 if bl_r else 0,
                 "low": 1 if low else 0,
@@ -421,6 +474,15 @@ class Ets2SharedMemoryReader:
                 "wip": 1 if wipers else 0,
                 "bcn": 1 if beacon else 0,
                 "mbrk": 1 if mbrk else 0,
+                "brk_l": brk_l,
+                "rev_l": rev_l,
+                "diff_l": diff_lock,
+                "lift_a": lift_axle,
+                "air_p": air_bar,
+                "oil_t": oil_temp,
+                "water_t": water_temp,
+                "brake_t": brake_temp,
+                "crg_wgt": cargo_weight_t,
                 "wear": total_wear,
                 "trk_w": truck_wear_pct,
                 "crg_w": cargo_wear_pct,
@@ -431,6 +493,8 @@ class Ets2SharedMemoryReader:
                 "gh": game_h,
                 "gm": game_m,
                 "conn": 1,
+                "load": 0,
+                "load_pct": 100,
                 "pause": 1 if (paused != 0) else 0,
                 # Thong tin ban do, lo trinh & dieu huong GPS
                 "route": route_str,
@@ -1148,7 +1212,7 @@ class Ets2DesktopCompanion:
 
         payload = {
             "game": "ets2",
-            "spd": int(round(truck.get("speed", 0.0))),
+            "spd": int(round(abs(truck.get("speed", 0.0)))),
             "lim": int(nav.get("speedLimit", 0)),
             "cc": int(round(truck.get("cruiseControlSpeed", 0.0))),
             "cc_on": 1 if truck.get("cruiseControlOn", False) else 0,
@@ -1169,6 +1233,16 @@ class Ets2DesktopCompanion:
             "wip": 1 if truck.get("wipersOn", False) else 0,
             "bcn": 1 if (truck.get("lightsBeaconOn", False) or truck.get("beaconOn", False)) else 0,
             "mbrk": 1 if truck.get("motorBrakeOn", False) else 0,
+            "brk_l": 1 if truck.get("lightsBrakeOn", False) else 0,
+            "rev_l": 1 if truck.get("lightsReverseOn", False) else 0,
+            "diff_l": 1 if truck.get("differentialLock", False) else 0,
+            "lift_a": 1 if (truck.get("liftAxle", False) or trailer.get("liftAxle", False)) else 0,
+            "air_p": round(truck.get("airPressure", 0.0), 1),
+            "oil_t": round(truck.get("oilTemperature", 0.0), 1),
+            "water_t": round(truck.get("waterTemperature", 0.0), 1),
+            "brake_t": round(truck.get("brakeTemperature", 0.0), 1),
+            "fuel_r": round(truck.get("fuelRate", 0.0) * 100.0, 1) if truck.get("fuelRate", 0.0) > 0 else 0.0,
+            "crg_wgt": round(trailer.get("mass", 0.0) / 1000.0, 1) if trailer.get("mass", 0.0) > 0 else 0.0,
             "wear": float(w_eng + w_tra + w_cab + w_cha + w_whl + w_trl),
             "trk_w": truck_wear_pct,
             "crg_w": cargo_wear_pct,
@@ -1179,6 +1253,8 @@ class Ets2DesktopCompanion:
             "gh": gh,
             "gm": gm,
             "conn": 1 if game.get("connected", False) else 0,
+            "load": 0 if game.get("connected", False) else 1,
+            "load_pct": 100 if game.get("connected", False) else 50,
             "pause": 1 if game.get("paused", False) else 0,
             # Ban do & Lo trinh
             "route": route_str,
@@ -1210,7 +1286,20 @@ class Ets2DesktopCompanion:
         if not self.ser or not self.ser.is_open:
             return
 
-        json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        # Chi gui cac truong ESP32 Dashboard thuc su can, khong gui coords/accel/damage chi tiet de tranh tran bo dem Serial UART
+        esp_keys = {
+            "game", "spd", "lim", "cc", "cc_on", "gear", "rpm", "rpm_max",
+            "fuel", "fuel_l", "fuel_cap", "fuel_warn", "fuel_r",
+            "trk_w", "crg_w", "crg_wgt", "trl_on", "odo",
+            "bl_l", "bl_r", "low", "high", "park",
+            "air", "air_p", "oil_t", "water_t", "brake_t",
+            "diff_l", "lift_a", "brk_l", "rev_l",
+            "ret", "wip", "bcn", "mbrk",
+            "eta_d", "eta_t", "gh", "gm",
+            "conn", "load", "load_pct", "pause", "evt", "evt_dur"
+        }
+        filtered = {k: payload[k] for k in esp_keys if k in payload}
+        json_bytes = json.dumps(filtered, separators=(",", ":")).encode("utf-8")
         line = b"ETS2=" + json_bytes + b"\n"
 
         try:

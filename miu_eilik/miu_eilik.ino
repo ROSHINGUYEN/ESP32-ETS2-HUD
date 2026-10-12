@@ -153,7 +153,7 @@ void processSerialLine(String line) {
   }
 }
 
-static char s0Buf[768];
+static char s0Buf[1280];
 static uint16_t s0Len = 0;
 
 static void checkSerialCommands() {
@@ -203,7 +203,7 @@ void setup() {
   oled.setCursor(24, 46);
   oled.print(F("DESKTOP COMPANION"));
   oled.display();
-  delay(600);
+  delay(100);
 
   emojiController.begin();
   display.initClock();

@@ -57,8 +57,7 @@ Sau quá trình thử nghiệm thực tế, hệ thống được tái cấu tr�
 | `miu_eilik/logger.h/.cpp` | Hệ thống ghi log tuần tự | Quản lý log ra Serial |
 | `miu_eilik/ntp_sync.h/.cpp` | Đồng bộ thời gian thực qua NTP | Cập nhật đồng hồ khi có WiFi |
 | `miu_eilik/servo_controller.h/.cpp` | Trạng thái góc ảo (Virtual Stub) | Tinh gọn thành stub nhẹ lưu góc ảo, không tốn tài nguyên |
-| `tools/miu_desktop_ets2.py` | Companion Tool chính trên PC | Tự bắt cổng COM, đọc telemetry SHM 30 FPS, hỗ trợ mode `--demo` |
-| `tools/ets2_open_api.py` | Open Telemetry API Module | Chuẩn mở 100% SCS SDK / SimHub, không chứa file binary lậu |
+| `tools/miu_desktop_ets2.py` | Companion Tool chính trên PC | Đọc trực tiếp SCS Telemetry SDK Shared Memory 30 FPS, hỗ trợ mode `--demo` |
 | `tools/mock_telemetry.json` | Mock Telemetry Test Data | Dữ liệu kiểm thử độc lập, an toàn khi push GitHub |
 | `tools/esp32_mcp_server.py` | Cổng AI MCP Server cho IDE | Cung cấp 5 tool giám sát & điều khiển robot qua AI IDE |
 | `platformio.ini` | Cấu hình biên dịch PlatformIO | Gỡ bỏ thư viện web và servo thừa |
@@ -86,9 +85,8 @@ MIU_EILIK_ESP32-S3/
 │   ├── ntp_sync.h/.cpp         # Network time protocol sync
 │   ├── servo_controller.h/.cpp # Virtual angle stub (no hardware PWM)
 │   └── roshi_logo.h            # Bitmap logo khởi động
-├── tools/                      # Bộ công cụ Companion & Open API trên PC
-│   ├── miu_desktop_ets2.py     # Desktop Companion chính (USB Serial, SHM & Demo)
-│   ├── ets2_open_api.py        # Thư viện Open Telemetry chuẩn SCS SDK (Hợp pháp 100%)
+├── tools/                      # Bộ công cụ Companion & SCS SDK Telemetry trên PC
+│   ├── miu_desktop_ets2.py     # Desktop Companion chính (USB Serial, SCS SDK SHM & Demo)
 │   ├── mock_telemetry.json     # Dữ liệu mô phỏng độc lập
 │   ├── esp32_mcp_server.py     # Cổng giao tiếp AI MCP Server cho IDE
 │   └── setup_autostart.py      # Kích hoạt tự động chạy ngầm cùng Windows
