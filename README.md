@@ -147,18 +147,86 @@ Hệ thống hoạt động theo nguyên lý kênh truyền phân tầng khép k
 
 ---
 
-## 🔌 Sơ Đồ Đấu Nối Phần Cứng (Hardware Wiring)
+## 🔌 Kê Khai Phần Cứng & Sơ Đồ Đấu Nối Dây (Hardware Specs & Wiring Diagram)
 
-Hệ thống được thiết kế tối ưu cho bo mạch **ESP32-S3-WROOM-1 (N16R8: 16MB Flash, 8MB Octal PSRAM)**:
+### 1. Bảng Kê Khai Bo Mạch Vi Điều Khiển Hỗ Trợ (Supported Microcontrollers)
 
-| Chân ESP32-S3 | Chân Màn Hình OLED | Chức Năng |
-|---|---|---|
-| **GPIO 8 (D8)** | **SDA** | Tuyến dữ liệu I2C Data |
-| **GPIO 9 (D9)** | **SCL** | Tuyến xung đồng hồ I2C Clock |
-| **3V3** | **VCC** | Nguồn cấp điện áp 3.3V ổn định |
-| **GND** | **GND** | Chân nối đất (Mass chung) |
+Hệ thống được thiết kế tối ưu hóa phần cứng, tương thích rộng rãi với các dòng vi điều khiển kiến trúc ESP32:
 
-*Ghi chú*: Firmware tích hợp tính năng **Auto-Scan I2C**, tự động dò tìm địa chỉ màn hình (`0x3C` hoặc `0x3D`) trên đường truyền.
+| Dòng Bo Mạch | Chip Xử Lý & Bộ Nhớ | Tần Số & Kiến Trúc | Cổng Kết Nối | Đánh Giá Khuyên Dùng |
+|---|---|---|---|---|
+| **ESP32-S3 DevKitC-1 (Khuyên Dùng Nhất)** | ESP32-S3-WROOM-1<br>• 16MB Flash (QIO)<br>• 8MB PSRAM (OPI) | 240 MHz Dual-Core<br>Xtensa LX7 32-bit | Type-C USB OTG<br>+ Type-C UART COM | ⭐⭐⭐⭐⭐ **Tối ưu nhất**: Tốc độ 460800 baud mượt mà 30 FPS, FreeRTOS 2 nhân phân luồng độc lập. |
+| **ESP32-S3 Mini / Zero** | ESP32-S3FH4R2 / N8R2<br>• 4MB-8MB Flash<br>• 2MB PSRAM | 240 MHz Dual-Core<br>Xtensa LX7 | Type-C USB OTG | ⭐⭐⭐⭐⭐ **Cực kỳ nhỏ gọn**: Thích hợp gắn trực tiếp lên Vô-lăng Logitech G29/G923, Thrustmaster, Fanatec. |
+| **ESP32 DevKit V1 (ESP32 Truyền Thống)** | ESP32-WROOM-32<br>• 4MB Flash<br>• 520KB SRAM | 240 MHz Dual-Core<br>Xtensa LX6 | Micro-USB hoặc<br>Type-C UART | ⭐⭐⭐⭐ Tương thích tốt qua cổng Serial UART mặc định (GPIO 21 SDA, GPIO 22 SCL). |
+
+---
+
+### 2. Bảng Kê Khai Màn Hình Hiển Thị Hỗ Trợ (Supported Displays)
+
+| Loại Màn Hình | Driver Điều Khiển | Độ Phân Giải & Kích Thước | Giao Tiếp Phần Cứng | Màu Sắc & Ứng Dụng Khuyên Dùng |
+|---|---|---|---|---|
+| **OLED 0.96 inch I2C (Chuẩn)** | SSD1306 | 128 x 64 pixels<br>(Kích thước: 27 x 27 mm) | 4 Chân I2C:<br>GND, VCC, SCL, SDA | • **Hai màu Vàng - Xanh (Khuyên dùng)**: 16px trên màu vàng hoàn hảo cho dàn đèn xi-nhan & cảnh báo; 48px dưới màu xanh hiển thị vận tốc và hộp số.<br>• **Màu Trắng (White) / Xanh Dương (Blue)**: Sắc nét, hiện đại. |
+| **OLED 1.3 inch I2C (To Rõ)** | SH1106 / SSD1306 | 128 x 64 pixels<br>(Kích thước: 35 x 33 mm) | 4 Chân I2C:<br>GND, VCC, SCL, SDA | • **Màu Trắng / Xanh Dương**: Diện tích hiển thị lớn hơn 45%, góc nhìn siêu rộng 160°, dễ nhìn từ khoảng cách xa trên Sim Rig. |
+
+- **Điện áp hoạt động của màn hình:** `3.3V` (Khuyên dùng) hoặc `5V` (Module tích hợp sẵn IC hạ áp 662K).
+- **Tốc độ xung I2C:** Hoạt động ổn định ở dải tần số cao `400 kHz (Fast Mode)`.
+- **Địa chỉ bus I2C:** Tự động dò tìm và khớp địa chỉ `0x3C` (mặc định) hoặc `0x3D`.
+
+---
+
+### 3. Sơ Đồ Đấu Nối Dây Chi Tiết (Detailed Visual Wiring Diagram)
+
+Sơ đồ kết nối trực quan giữa bo mạch vi điều khiển **ESP32-S3 DevKitC-1** và **Module Màn hình OLED 128x64 (4 Chân I2C)**:
+
+```
+  ┌────────────────────────────────────────────────────────┐
+  │                 ESP32-S3 DEVKITC-1                     │
+  │                                                        │
+  │  [3V3] ──(Dây Đỏ)───────────────────────┐              │
+  │  [GND] ──(Dây Đen)────────────────────┐ │              │
+  │  [IO8] ──(Dây Xanh Lá - Data)───────┐ │ │              │
+  │  [IO9] ──(Dây Vàng - Clock)───────┐ │ │ │              │
+  └───────────────────────────────────│─│─│─│──────────────┘
+                                      │ │ │ │
+                                      ▼ ▼ ▼ ▼
+                             ┌───────────────────────┐
+                             │    SCL SDA GND VCC    │
+                             │  ┌─────────────────┐  │
+                             │  │ OLED SSD1306    │  │
+                             │  │ 128 x 64 PIXELS │  │
+                             │  │                 │  │
+                             │  │   MIU-ETS2      │  │
+                             │  │   DASHBOARD     │  │
+                             │  └─────────────────┘  │
+                             └───────────────────────┘
+```
+
+#### Bảng Ánh Xạ Chân Nối Dây (Pinout Mapping Table)
+
+| Tên Chân Màn Hình OLED | Chân Kết Nối ESP32-S3 | Chân Kết Nối ESP32 WROOM-32 | Chức Năng & Màu Dây Khuyên Dùng |
+|---|---|---|---|
+| **VCC** | **3V3** (hoặc 5V) | **3V3** (hoặc 5V) | Cấp nguồn dương (+3.3V DC) — **Dây Đỏ** |
+| **GND** | **GND** | **GND** | Nối đất Mass chung (0V) — **Dây Đen** |
+| **SCL (SCK)** | **GPIO 9** (D9) | **GPIO 22** (D22) | Xung đồng hồ dữ liệu I2C Clock — **Dây Vàng** |
+| **SDA** | **GPIO 8** (D8) | **GPIO 21** (D21) | Tuyến truyền dữ liệu I2C Data — **Dây Xanh Lá** |
+
+#### ⚠️ Cảnh Báo An Toàn Phần Cứng (Hardware Safety Notes)
+1. **Kiểm tra thứ tự chân VCC và GND trước khi cấp nguồn**: Trên thị trường có 2 phiên bản chân cắm phổ biến:
+   - Loại A: `[GND - VCC - SCL - SDA]`
+   - Loại B: `[VCC - GND - SCL - SDA]`  
+   *Hãy luôn nhìn chữ in thực tế trên board OLED của bạn trước khi cắm dây để tránh cấp ngược cực gây chập cháy module OLED.*
+2. **Cơ chế Smart Auto-Scan I2C chống cắm nhầm**: Firmware MIU-ETS2 được tích hợp thuật toán thông minh tự động quét qua **8 cặp chân I2C dự phòng** (`GPIO 8/9`, `GPIO 9/8`, `GPIO 1/2`, `GPIO 2/1`, `GPIO 41/42`, `GPIO 47/48`). Nếu bạn vô tình cắm đảo ngược dây SDA và SCL, bo mạch vẫn sẽ tự động nhận diện màn hình và hoạt động bình thường!
+
+---
+
+### 4. 🛡️ Cam Kết An Toàn, Chống Lỗi Code & Bảo Mật Dữ Liệu (Code Quality & Security)
+
+Để người dùng an tâm tuyệt đối khi tải về và sử dụng, dự án áp dụng các tiêu chuẩn chất lượng nghiêm ngặt:
+
+- **100% Không Lộ Thông Tin Cá Nhân (Zero Leakage)**: Mã nguồn không chứa bất kỳ thông tin nhạy cảm, mật khẩu cá nhân, tài khoản Windows, hay API key bí mật nào.
+- **Không Chứa Code Rác / Code Lỗi Thử Nghiệm**: Toàn bộ các đoạn code thừa, file log tạm (`*.log`), file nháp thử nghiệm (`scratch/`, `temp_*`) đều được loại trừ an toàn qua `.gitignore`. Mã nguồn trên GitHub là bản sạch (Clean Production Code).
+- **Tự Động Quản Lý Thư Viện (Zero-Dependency Conflict)**: Dự án sử dụng cấu hình PlatformIO chuẩn hóa. Khi nạp code, toàn bộ thư viện bên thứ ba đúng phiên bản (`Adafruit SSD1306 2.5.x`, `ArduinoJson 6.21.x`...) sẽ được tự động tải về và biên dịch khép kín, triệt tiêu hoàn toàn các lỗi xung đột phiên bản thư viện thường gặp trên Arduino IDE.
+- **Không Can Thiệp File Save Game**: Ứng dụng chỉ đọc dữ liệu buồng lái tức thời từ vùng nhớ chia sẻ `Windows Shared Memory` do chính game phát ra, không ghi đè, không sửa đổi file save hay cấu hình của người chơi, an toàn tuyệt đối với tài khoản Steam.
 
 ---
 

@@ -58,6 +58,12 @@ API-ETS2/server/*.log
 
 # Temporary test dumps & scratch files
 scratch/
+temp*/
+*.tmp
+*.dump
+*.dmp
+*.pdb
+*.obj
 test_*.txt
 test_out.txt
 shm_dump.bin
