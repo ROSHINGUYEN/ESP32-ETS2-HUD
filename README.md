@@ -171,13 +171,15 @@ python tools/esp32_mcp_server.py --test
 
 ```
 E:\MIU_EILIK_ESP32-S3\
-├── BAT_TU_DONG_CHAY_NGAM.bat     ← Kích hoạt tự động chạy ngầm cùng Windows boot
-├── TAT_TU_DONG_CHAY_NGAM.bat     ← Dừng và gỡ bỏ chế độ chạy ngầm
-├── CHAY_DASHBOARD_ETS2.bat       ← Chạy companion thủ công có console theo dõi
+├── README.md                     ← Tài liệu hướng dẫn toàn diện dự án
 ├── platformio.ini                ← Cấu hình build PlatformIO cho ESP32-S3 (N16R8)
 ├── partitions_16mb.csv           ← Bảng phân vùng Flash 16MB
-├── WORK_REPORT.md                ← Nhật ký tiến độ công việc kỹ thuật liên tục
-├── README.md                     ← Tài liệu hướng dẫn toàn diện dự án
+│
+├── scripts\                      ← Bộ script tiện ích Windows
+│   ├── BAT_TU_DONG_CHAY_NGAM.bat ← Kích hoạt tự động chạy ngầm cùng Windows boot
+│   ├── TAT_TU_DONG_CHAY_NGAM.bat ← Dừng và gỡ bỏ chế độ chạy ngầm
+│   ├── CHAY_DASHBOARD_ETS2.bat   ← Chạy companion thủ công có console theo dõi
+│   └── CHAY_DEMO_THU_NGHIEM.bat  ← Chạy mô phỏng demo HUD không cần game
 │
 ├── miu_eilik\                    ← Mã nguồn C++ Firmware ESP32-S3
 │   ├── miu_eilik.ino             ← Setup FreeRTOS 2 nhân & vòng lặp chính
@@ -188,12 +190,16 @@ E:\MIU_EILIK_ESP32-S3\
 │   ├── emoji_controller.h/.cpp   ← Quản lý mắt robot RoboEyes
 │   └── FluxGarage_RoboEyes.h     ← Thư viện đồ họa mắt robot chuyển động
 │
-└── tools\                        ← Bộ công cụ Python Companion & MCP Server
-    ├── miu_desktop_ets2.py       ← Cầu nối Telemetry Windows Shared Memory -> ESP32
-    ├── esp32_mcp_server.py       ← Server MCP JSON-RPC 2.0 stdio cho AI IDE
-    ├── launch_silent.vbs         ← Script chạy ngầm không hiện cửa sổ console
-    ├── telemetry_state.json      ← Cache trạng thái telemetry thời gian thực
-    └── daemon.log                ← File log hoạt động và lịch sử sự kiện buồng lái
+├── tools\                        ← Bộ công cụ Python Companion & MCP Server
+│   ├── miu_desktop_ets2.py       ← Cầu nối Telemetry Windows Shared Memory -> ESP32
+│   ├── ets2_open_api.py          ← Module Open Telemetry chuẩn SCS SDK độc lập
+│   ├── mock_telemetry.json       ← Dữ liệu telemetry mô phỏng kiểm thử độc lập
+│   ├── esp32_mcp_server.py       ← Server MCP JSON-RPC 2.0 stdio cho AI IDE
+│   ├── check_shm.py              ← Công cụ kiểm tra Shared Memory nhanh
+│   └── setup_autostart.py        ← Cài đặt tự khởi động registry Windows
+│
+└── docs\                         ← Tài liệu kiến trúc & lộ trình
+    └── roadmap.md                ← Lộ trình phát triển và quy hoạch tính năng
 ```
 
 ---
@@ -202,7 +208,7 @@ E:\MIU_EILIK_ESP32-S3\
 
 1. **Tại sao tôi vào game ETS2 mà màn hình robot vẫn ở mắt robot?**
    - Đảm bảo bạn đã cài đặt plugin Telemetry của ETS2 (file `ets2-telemetry-server.dll` trong thư mục `bin\win_x64\plugins\` của game).
-   - Kiểm tra xem daemon đang chạy hay chưa bằng lệnh: `python tools/esp32_mcp_server.py --test`. Nếu daemon đang tắt, chỉ cần nhấp đúp vào `BAT_TU_DONG_CHAY_NGAM.bat`.
+   - Kiểm tra xem daemon đang chạy hay chưa bằng lệnh: `python tools/esp32_mcp_server.py --test`. Nếu daemon đang tắt, chỉ cần nhấp đúp vào `scripts/BAT_TU_DONG_CHAY_NGAM.bat`.
 
 2. **Khi rút cáp USB cắm lại, robot có nhận lại không?**
    - Hoàn toàn tự động! Companion có cơ chế auto-reconnect mỗi 1 giây. Khi bạn cắm lại cáp USB, daemon sẽ tự động bắt lại cổng COM5 và tiếp tục truyền dữ liệu bình thường.
