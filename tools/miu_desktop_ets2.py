@@ -79,7 +79,20 @@ class SafeStdoutWriter:
             return self.fallback.fileno()
         raise OSError("fileno not available")
 
+LOG_MAX_BYTES = 2 * 1024 * 1024  # 2MB max, giu 1 ban backup
+
 log_path = os.path.join(os.path.dirname(__file__), "daemon.log")
+
+# Log rotation don gian: neu file qua 2MB thi doi ten thanh daemon.log.1 va bat dau lai
+try:
+    if os.path.exists(log_path) and os.path.getsize(log_path) > LOG_MAX_BYTES:
+        bak = log_path + ".1"
+        if os.path.exists(bak):
+            os.remove(bak)
+        os.rename(log_path, bak)
+except Exception:
+    pass
+
 sys.stdout = SafeStdoutWriter(sys.stdout, log_path)
 sys.stderr = SafeStdoutWriter(sys.stderr, log_path)
 
@@ -146,6 +159,9 @@ class Ets2SharedMemoryReader:
         self._last_sim_tick_time: float = 0.0
         self._last_proc_check: float = 0.0
         self._last_proc_running: bool = False
+        # Luu gio game cuoi cung de dien vao goi loading thay vi -1
+        self._last_game_h: int = -1
+        self._last_game_m: int = -1
 
     def _find_ets2_pid(self) -> Optional[int]:
         if not _PSUTIL_OK:
@@ -305,7 +321,7 @@ class Ets2SharedMemoryReader:
                 # Thu ket noi lai SHM neu plugin vua tao xong
                 self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
                 if self.hMap:
-                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 4096)
+                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 4096)  # BUG-FIX: thêm dwFileOffLow=0
                 if not self.pBuf:
                     # Chi tra ve goi loading neu tien trinh game THUC SU DANG CHAY tren Windows:
                     if not self._is_ets2_process_running():
@@ -322,13 +338,13 @@ class Ets2SharedMemoryReader:
                         "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
                         "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
                         "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
-                        "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
+                        "odo": 0, "eta_d": 0, "eta_t": 0,
+                        "gh": self._last_game_h, "gm": self._last_game_m,
                         "conn": 1, "pause": 1, "load": 1, "load_pct": cur_load_pct,
                         "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
                         "income": 0, "truck_make": "", "truck_model": "",
                         "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
                         "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
-                        "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     }
 
             raw = ctypes.string_at(self.pBuf, 2048)
@@ -371,7 +387,8 @@ class Ets2SharedMemoryReader:
                     "income": 0, "truck_make": "", "truck_model": "",
                     "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
                     "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
-                    "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    # Dung gio game lan cuoi biet (tranh nhay dong ho Windows khi loading plugin)
+                    "gh": self._last_game_h, "gm": self._last_game_m,
                 }
 
             # Offset 160: timeAbsolute (minutes elapsed in game world, non-zero = in-game)
@@ -412,13 +429,14 @@ class Ets2SharedMemoryReader:
                     "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
                     "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
                     "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
-                    "odo": 0, "eta_d": 0, "eta_t": 0, "gh": -1, "gm": -1,
+                    "odo": 0, "eta_d": 0, "eta_t": 0,
+                    # Dung gio game da biet lan cuoi de man hinh khong nhay ve dong ho that
+                    "gh": self._last_game_h, "gm": self._last_game_m,
                     "conn": 1, "pause": 1, "load": 1, "load_pct": cur_load_pct,
                     "route": "", "city_src": "", "city_dst": "", "comp_src": "", "comp_dst": "", "cargo": "",
                     "income": 0, "truck_make": "", "truck_model": "",
                     "coords": [0.0, 0.0, 0.0], "accel": [0.0, 0.0, 0.0],
                     "damage": {"engine": 0.0, "trans": 0.0, "cabin": 0.0, "chassis": 0.0, "wheels": 0.0, "trailer": 0.0},
-                    "raw_wear": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 }
 
             # Khi da vao buong lai lai xe: Reset loading_start_time
@@ -433,6 +451,10 @@ class Ets2SharedMemoryReader:
                 local_now = time.localtime()
                 game_h = local_now.tm_hour
                 game_m = local_now.tm_min
+
+            # Luu lai gio game de dien vao cac goi loading sau nay
+            self._last_game_h = game_h
+            self._last_game_m = game_m
 
             ax, ay, az = struct.unpack_from("<3f", raw, 28)
             cx, cy, cz = struct.unpack_from("<3f", raw, 40)

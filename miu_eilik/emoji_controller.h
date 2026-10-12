@@ -33,6 +33,12 @@ enum class AnimationType {
     CRY,          // 哭泣 (Khóc)
     LOVING,       // 喜爱 (Yêu thích)
     THINKING,     // 思考 (Suy nghĩ)
+    // --- Desktop Pet Extensions ---
+    WINK,         // Nháy mắt một bên
+    EXCITED,      // Hứng khởi - mở to rồi cười
+    CURIOUS,      // Tò mò - nhìn lên trái rồi nghiêng đầu
+    SHY,          // Ngại ngùng - nhìn xuống rồi blink
+    STRETCH,      // Vươn vai - nhìn lên rồi lắc đầu
     RANDOM        // 随机动画 (Ngẫu nhiên tự hành)
 };
 

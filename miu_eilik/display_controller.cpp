@@ -443,11 +443,17 @@ void DisplayManager::drawClock() {
 
   oled.drawFastHLine(0, 46, SCREEN_W, SSD1306_WHITE);
 
-  float rawT = temperatureRead();
-  if (rawT >= 20.0f && rawT <= 85.0f) {
-    float estimatedRoomT = rawT - 28.5f;
-    estimatedRoomT = constrain(estimatedRoomT, 22.0f, 38.0f);
-    tempC = tempC * 0.92f + estimatedRoomT * 0.08f;
+  // Cache nhiet do ESP32 noi bo: cap nhat 1 lan/giay thay vi moi frame (30x/giay)
+  static unsigned long lastTempReadMs = 0;
+  unsigned long nowClk = millis();
+  if (nowClk - lastTempReadMs >= 1000) {
+    lastTempReadMs = nowClk;
+    float rawT = temperatureRead();
+    if (rawT >= 20.0f && rawT <= 85.0f) {
+      float estimatedRoomT = rawT - 28.5f;
+      estimatedRoomT = constrain(estimatedRoomT, 22.0f, 38.0f);
+      tempC = tempC * 0.92f + estimatedRoomT * 0.08f;
+    }
   }
 
   drawThermometer(4, 50);
@@ -546,14 +552,11 @@ void DisplayManager::drawEts2SplashScreen() {
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
 
-  // 1. Header: SCANIA TRUCK - ETS2
+  // 1. Header: SCANIA TRUCK - ETS2 (y=0..9)
   oled.setTextSize(1);
-  oled.setCursor(8, 1);
-  oled.print(F("SCANIA TRUCK - ETS2"));
-  oled.drawFastHLine(4, 10, 120, SSD1306_WHITE);
-
-  // 2. Ve xe Scania Container chuan anh mau tai (x=8, y=12)
-  oled.drawBitmap(8, 12, scania_container_112x32, 112, 32, SSD1306_WHITE);
+  oled.setCursor(12, 1);
+  oled.print(F("ETS2 - LOADING..."));
+  oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
 
   // 3. Tinh toan tien do % loading muot ma
   int pct = 0;
@@ -566,8 +569,14 @@ void DisplayManager::drawEts2SplashScreen() {
     pct = 50 + (int)((now / 90) % 49);
   }
 
-  // 4. Dong chu trang thai loading & %
-  oled.setCursor(8, 45);
+  // 2. Ve xe Scania - scale xuong 96x28 de du cho text va progress bar
+  // Bitmap goc 112x32 -> scale de ve trong vung y=12..39 (28px)
+  // Su dung draw 1:1 nhung dich ve trai de con cho cho text phai
+  oled.drawBitmap(8, 12, scania_container_112x32, 112, 32, SSD1306_WHITE);
+
+  // 4. Dong chu trang thai loading (y=45) - dung line moi sau bitmap
+  oled.drawFastHLine(0, 44, 128, SSD1306_WHITE);
+  oled.setCursor(4, 46);
   if (pct < 35) {
     oled.print(F("KHOI DONG SCS SDK"));
   } else if (pct < 85) {
@@ -576,31 +585,31 @@ void DisplayManager::drawEts2SplashScreen() {
     oled.print(F("SAN SANG LAI XE!"));
   }
 
-  oled.setCursor(94, 45);
-  if (pct < 10) oled.print(F("  "));
-  else if (pct < 100) oled.print(F(" "));
-  oled.print(pct);
-  oled.print(F("%"));
+  // % hien thi ben phai cung hang
+  char pctBuf[5];
+  snprintf(pctBuf, sizeof(pctBuf), "%3d%%", pct);
+  oled.setCursor(98, 46);
+  oled.print(pctBuf);
 
-  // 5. Thanh tien trinh loading bo goc sac net voi fill day dan & hieu ung tia sang
-  int barX = 8;
-  int barY = 54;
-  int barW = 112;
-  int barH = 8;
+  // 5. Thanh tien trinh (y=55..63) - co khoang cach ro rang voi text tren
+  int barX = 2;
+  int barY = 56;
+  int barW = 124;
+  int barH = 7;
   oled.drawRoundRect(barX, barY, barW, barH, 2, SSD1306_WHITE);
 
-  int innerW = barW - 4; // 108
+  int innerW = barW - 4;
   int fillW = map(pct, 0, 100, 0, innerW);
 
   if (fillW > 0) {
-    oled.fillRect(barX + 2, barY + 2, fillW, 4, SSD1306_WHITE);
+    oled.fillRect(barX + 2, barY + 2, fillW, barH - 4, SSD1306_WHITE);
 
-    // Hieu ung tia sang quet qua thanh loading (Scanning Sheen)
-    int sheen = (now / 20) % (fillW + 14) - 14;
+    // Hieu ung tia sang quet qua thanh loading
+    int sheen = (int)((now / 20) % (unsigned long)(fillW + 14)) - 14;
     if (sheen >= 0 && sheen < fillW) {
-      oled.drawFastVLine(barX + 2 + sheen, barY + 2, 4, SSD1306_BLACK);
+      oled.drawFastVLine(barX + 2 + sheen, barY + 2, barH - 4, SSD1306_BLACK);
       if (sheen + 1 < fillW) {
-        oled.drawFastVLine(barX + 2 + sheen + 1, barY + 2, 4, SSD1306_BLACK);
+        oled.drawFastVLine(barX + 3 + sheen, barY + 2, barH - 4, SSD1306_BLACK);
       }
     }
   }
@@ -749,8 +758,8 @@ void DisplayManager::drawGameDashboard() {
   unsigned long now = millis();
 
   // 1. Uu tien kiem tra Timeout va ket noi truoc tien:
-  // Neu mat goi tin qua 1.5s hoac game bao chua ket noi -> thoat ngay ve Mat RoboEyes
-  bool isTimedOut = (gameLastPacketMs == 0 || (now - gameLastPacketMs > 1500));
+  // Timeout 3s de tranh nhap nhay khi goi telemetry den cham hon 1 chu ky
+  bool isTimedOut = (gameLastPacketMs == 0 || (now - gameLastPacketMs > 3000));
   if (isTimedOut || !gameTelem.connected) {
     mode = DISP_EYES;
     gameModeLocked = false;
@@ -782,8 +791,22 @@ void DisplayManager::drawGameDashboard() {
   static const uint8_t icon_engine[]     PROGMEM = { 0x30, 0x7E, 0xDB, 0xC3, 0x7E, 0x24, 0x66 }; // Khoi dong co Check Engine chuan ISO
   static const uint8_t icon_hazard[]     PROGMEM = { 0x18, 0x3C, 0x5A, 0x5A, 0x99, 0x81, 0xFF }; // Tam giac den khan cap Hazard Flasher ISO
 
-  // 1. TOP HEADER (y = 0..11) - DANG TAP-LO O TO HIEN DAI
-  bool isHazard = gameTelem.hazard || (gameTelem.blinkerL && gameTelem.blinkerR);
+  // =========================================================================
+  // HEADER ICON LAYOUT (y=0..10) - Vi tri co dinh tranh chong cheo:
+  // x=0..7   : Xi-nhan trai / Hazard trai
+  // x=9..16  : Den pha / cos / demi  (slot den)
+  // x=18..25 : Gat mua (wiper icon)
+  // x=27     : Cap do gat (1/2/3 digit)
+  // x=33..40 : Hazard icon TAM GIAC hoac Horn icon
+  // x=42..48 : Horn icon (khi co ca hazard luon)
+  // x=46..87 : Dong ho gio cabin (trung tam)
+  // x=80..87 : Engine icon
+  // x=89..97 : Retarder R1..R5 hoac BCN
+  // x=105..116: Cruise CC
+  // x=119..127: Xi-nhan phai / Hazard phai
+  // =========================================================================
+
+  bool isHazard   = gameTelem.hazard || (gameTelem.blinkerL && gameTelem.blinkerR);
   bool blinkPhase = ((now / 350) % 2 == 0);
 
   // Xi-nhan trai (Left Blinker) hoac Den khan cap (Hazard):
@@ -795,73 +818,74 @@ void DisplayManager::drawGameDashboard() {
     }
   }
 
-  // Den pha (High Beam) / Den cos (Low Beam) / Den demi (Parking):
+  // Den pha / cos / demi - slot co dinh x=9
   if (gameTelem.lightsBeamHigh) {
-    oled.drawBitmap(10, 2, icon_high_beam, 8, 7, SSD1306_WHITE);
+    oled.drawBitmap(9, 2, icon_high_beam, 8, 7, SSD1306_WHITE);
   } else if (gameTelem.lightsBeamLow) {
-    oled.drawBitmap(10, 2, icon_low_beam, 8, 7, SSD1306_WHITE);
+    oled.drawBitmap(9, 2, icon_low_beam, 8, 7, SSD1306_WHITE);
   } else if (gameTelem.lightsParking) {
-    oled.drawBitmap(10, 2, icon_park_light, 8, 7, SSD1306_WHITE);
+    oled.drawBitmap(9, 2, icon_park_light, 8, 7, SSD1306_WHITE);
   }
 
-  // Gat nuoc kinh lai (Wipers) & Cap do gat (1, 2, 3):
+  // Gat nuoc - slot co dinh x=18; cap do gat x=27
   if (gameTelem.wipers || gameTelem.wiperLevel > 0) {
-    oled.drawBitmap(20, 2, icon_wiper, 8, 7, SSD1306_WHITE);
+    oled.drawBitmap(18, 2, icon_wiper, 8, 7, SSD1306_WHITE);
     int wLvl = (gameTelem.wiperLevel > 0) ? gameTelem.wiperLevel : 1;
     oled.setTextSize(1);
-    oled.setCursor(29, 2);
+    oled.setCursor(27, 2);
     oled.print(wLvl);
   }
 
-  // Den khan cap (Hazard Warning Lights Flasher - Icon tam giac ISO) & Ken/Coi (Horn):
+  // Hazard tam giac - slot x=33; Horn - slot x=42 (neu ca 2 cung active)
   if (isHazard) {
     if (blinkPhase) {
-      oled.drawBitmap(37, 2, icon_hazard, 8, 7, SSD1306_WHITE);
+      oled.drawBitmap(33, 2, icon_hazard, 8, 7, SSD1306_WHITE);
     }
     if (gameTelem.horn) {
-      oled.drawBitmap(28, 2, icon_horn, 8, 7, SSD1306_WHITE);
+      oled.drawBitmap(42, 2, icon_horn, 8, 7, SSD1306_WHITE);
     }
   } else if (gameTelem.horn) {
-    oled.drawBitmap(37, 2, icon_horn, 8, 7, SSD1306_WHITE);
+    oled.drawBitmap(33, 2, icon_horn, 8, 7, SSD1306_WHITE);
   }
 
-  // Dong ho gio cabin xe (Co dinh chinh giua x=48..77):
+  // Dong ho gio cabin - trung tam an toan x=46..87 (xoa truoc de tranh ghost)
+  // Uu tien: gio trong game (gameHour/gameMin), fallback dong ho that khi chua co
   int dispH = (gameTelem.gameHour >= 0) ? gameTelem.gameHour : clockHour;
-  int dispM = (gameTelem.gameMin >= 0) ? gameTelem.gameMin : clockMin;
+  int dispM = (gameTelem.gameMin  >= 0) ? gameTelem.gameMin  : clockMin;
   bool blinkColon = ((now / 500) % 2 == 0);
   oled.setTextSize(1);
-  oled.setCursor(48, 2);
+  oled.fillRect(46, 0, 34, 11, SSD1306_BLACK);
+  oled.setCursor(47, 2);
   oled.printf("%02d%c%02d", dispH, blinkColon ? ':' : ' ', dispM);
 
-  // Dong co xe (Engine Status / Check Engine):
+  // Engine / Check Engine - slot x=81
   if (gameTelem.engineOn) {
     bool engWarn = (gameTelem.truckWearPct >= 15);
     if (!engWarn || ((now / 300) % 2 == 0)) {
-      oled.drawBitmap(80, 2, icon_engine, 8, 7, SSD1306_WHITE);
+      oled.drawBitmap(81, 2, icon_engine, 8, 7, SSD1306_WHITE);
     }
   } else {
-    // Khi tat may: nhap nhay icon dong co thong bao chua no may (khong ke vach ngang rach icon)
     if ((now / 400) % 2 == 0) {
-      oled.drawBitmap(80, 2, icon_engine, 8, 7, SSD1306_WHITE);
+      oled.drawBitmap(81, 2, icon_engine, 8, 7, SSD1306_WHITE);
     }
   }
 
-  // Retarder hoac Beacon:
+  // Retarder / Beacon - slot x=91
   if (gameTelem.retarder > 0) {
-    oled.setCursor(90, 2);
+    oled.setCursor(91, 2);
     oled.printf("R%d", gameTelem.retarder);
   } else if (gameTelem.beacon && ((now / 300) % 2 == 0)) {
-    oled.setCursor(90, 2);
+    oled.setCursor(91, 2);
     oled.print(F("BCN"));
   }
 
-  // Cruise Control badge o header:
+  // Cruise Control badge - slot x=106
   if (gameTelem.cruiseOn) {
-    oled.setCursor(105, 2);
+    oled.setCursor(106, 2);
     oled.print(F("CC"));
   }
 
-  // Xi-nhan phai (Right Blinker) hoac Den khan cap (Hazard):
+  // Xi-nhan phai - slot x=120
   if (gameTelem.blinkerR || isHazard) {
     if (blinkPhase) {
       oled.fillTriangle(120, 1, 126, 5, 120, 9, SSD1306_WHITE);

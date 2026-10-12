@@ -46,7 +46,8 @@ void UsbLink::update() {
         break;
       case S_LENL:
         pktLen |= b; xorSum ^= b; rxCount = 0;
-        state = (pktLen > 1040) ? S_SYNC1 : (pktLen == 0 ? S_CHKSUM : S_PAYLOAD);
+        // Gioi han theo sizeof(payload)-1 de tranh buffer overflow
+        state = (pktLen >= sizeof(payload)) ? S_SYNC1 : (pktLen == 0 ? S_CHKSUM : S_PAYLOAD);
         break;
       case S_PAYLOAD:
         payload[rxCount++] = b; xorSum ^= b;
@@ -223,7 +224,7 @@ void UsbLink::handle() {
     display.mode = DISP_STREAM;
     display.setStreamFrame(payload);
   } else if ((pktType == PKT_CMD_JSON || pktType == PKT_GAME_TELEMETRY) && pktLen > 0 && pktLen < sizeof(payload)) {
-    payload[pktLen] = '\0';
+    payload[pktLen] = '\0';  // pktLen < sizeof(payload) nen index pktLen hop le
     processJson((const char*)payload, pktLen);
   } else if (pktType == PKT_TELEMETRY_REQ) {
     uint8_t res[11] = {

@@ -201,11 +201,11 @@ void setup() {
   oled.display();
   delay(300);
 
-  display.initClock();
 #if ENABLE_WIFI
   ntp.begin();
   ets2Wifi.begin();
 #endif
+  // Chu y: display.begin() da goi initClock() noi bo - khong goi lai o day
 
   xTaskCreatePinnedToCore(taskUsb,     "USB",     6144, NULL, 4, NULL, 0);
   xTaskCreatePinnedToCore(taskDisplay, "Display", 6144, NULL, 4, NULL, 1);

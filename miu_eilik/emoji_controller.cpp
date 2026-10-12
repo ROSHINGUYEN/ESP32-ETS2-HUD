@@ -144,6 +144,54 @@ void EmojiController::AnimationTask(void* pvParameters) {
                     roboEyes.setPosition(0);
                     break;
 
+                case AnimationType::WINK:
+                    roboEyes.setMood(MOOD_HAPPY);
+                    roboEyes.setPosition(3);
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    roboEyes.blink();
+                    vTaskDelay(pdMS_TO_TICKS(150));
+                    roboEyes.setPosition(0);
+                    roboEyes.setMood(MOOD_DEFAULT);
+                    break;
+
+                case AnimationType::EXCITED:
+                    roboEyes.open();
+                    roboEyes.setMood(MOOD_HAPPY);
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    roboEyes.anim_laugh();
+                    vTaskDelay(pdMS_TO_TICKS(400));
+                    roboEyes.setMood(MOOD_DEFAULT);
+                    break;
+
+                case AnimationType::CURIOUS:
+                    roboEyes.setPosition(8); // NW
+                    vTaskDelay(pdMS_TO_TICKS(400));
+                    roboEyes.setPosition(2); // NE
+                    vTaskDelay(pdMS_TO_TICKS(300));
+                    roboEyes.setPosition(0);
+                    break;
+
+                case AnimationType::SHY:
+                    roboEyes.setMood(MOOD_TIRED);
+                    roboEyes.setPosition(6); // SW
+                    vTaskDelay(pdMS_TO_TICKS(300));
+                    roboEyes.blink();
+                    vTaskDelay(pdMS_TO_TICKS(400));
+                    roboEyes.setPosition(0);
+                    roboEyes.setMood(MOOD_DEFAULT);
+                    break;
+
+                case AnimationType::STRETCH:
+                    roboEyes.setPosition(1); // N
+                    vTaskDelay(pdMS_TO_TICKS(300));
+                    roboEyes.setPosition(7); // W
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    roboEyes.setPosition(3); // E
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    roboEyes.setPosition(0);
+                    roboEyes.blink();
+                    break;
+
                 case AnimationType::RANDOM:
                     self->RandomAct();
                     break;
@@ -183,29 +231,122 @@ void EmojiController::Loving()    { PlayAnimation(AnimationType::LOVING); }
 void EmojiController::Center()    { roboEyes.setPosition(0); roboEyes.setMood(MOOD_DEFAULT); }
 
 void EmojiController::RandomAct() {
-    int choice = random(5);
-    if (choice == 0) {
-        // Nhìn sang trái
+    // 19 slot hành động desktop pet với xác suất phân bổ hợp lý
+    int choice = random(19);
+
+    if (choice < 3) {
+        // --- Blink tự nhiên (xác suất ~15%) ---
+        roboEyes.blink();
+
+    } else if (choice < 5) {
+        // --- Nhìn trái ---
         roboEyes.setPosition(7);
-        vTaskDelay(pdMS_TO_TICKS(800));
+        vTaskDelay(pdMS_TO_TICKS(700));
         roboEyes.setPosition(0);
-    } else if (choice == 1) {
-        // Nhìn sang phải
+
+    } else if (choice < 7) {
+        // --- Nhìn phải ---
         roboEyes.setPosition(3);
-        vTaskDelay(pdMS_TO_TICKS(800));
+        vTaskDelay(pdMS_TO_TICKS(700));
         roboEyes.setPosition(0);
-    } else if (choice == 2) {
-        // Ngước lên
+
+    } else if (choice == 7) {
+        // --- Nhìn lên ---
         roboEyes.setPosition(1);
-        vTaskDelay(pdMS_TO_TICKS(800));
+        vTaskDelay(pdMS_TO_TICKS(600));
         roboEyes.setPosition(0);
-    } else if (choice == 3) {
-        // Cúi xuống
+
+    } else if (choice == 8) {
+        // --- Nhìn xuống (ngượng/tư lự) ---
+        roboEyes.setMood(MOOD_TIRED);
         roboEyes.setPosition(5);
-        vTaskDelay(pdMS_TO_TICKS(800));
+        vTaskDelay(pdMS_TO_TICKS(700));
         roboEyes.setPosition(0);
+        roboEyes.setMood(MOOD_DEFAULT);
+
+    } else if (choice == 9) {
+        // --- Gật đầu ---
+        roboEyes.setPosition(5);
+        vTaskDelay(pdMS_TO_TICKS(250));
+        roboEyes.setPosition(1);
+        vTaskDelay(pdMS_TO_TICKS(250));
+        roboEyes.setPosition(0);
+
+    } else if (choice == 10) {
+        // --- Lắc đầu ---
+        roboEyes.setPosition(7);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        roboEyes.setPosition(3);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        roboEyes.setPosition(0);
+
+    } else if (choice == 11) {
+        // --- Bối rối ---
+        roboEyes.anim_confused();
+        vTaskDelay(pdMS_TO_TICKS(350));
+        roboEyes.setPosition(0);
+
+    } else if (choice == 12) {
+        // --- Suy nghĩ: nhìn lên trái rồi blink ---
+        roboEyes.setPosition(8); // NW
+        vTaskDelay(pdMS_TO_TICKS(500));
+        roboEyes.blink();
+        vTaskDelay(pdMS_TO_TICKS(200));
+        roboEyes.setPosition(0);
+
+    } else if (choice == 13) {
+        // --- Cười sảng khoái ---
+        roboEyes.setMood(MOOD_HAPPY);
+        roboEyes.anim_laugh();
+        vTaskDelay(pdMS_TO_TICKS(300));
+        roboEyes.setMood(MOOD_DEFAULT);
+
+    } else if (choice == 14) {
+        // --- WINK: mood vui + nhìn nghiêng + blink ---
+        roboEyes.setMood(MOOD_HAPPY);
+        roboEyes.setPosition(3);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        roboEyes.blink();
+        vTaskDelay(pdMS_TO_TICKS(150));
+        roboEyes.setPosition(0);
+        roboEyes.setMood(MOOD_DEFAULT);
+
+    } else if (choice == 15) {
+        // --- EXCITED: mở to + cười to ---
+        roboEyes.open();
+        roboEyes.setMood(MOOD_HAPPY);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        roboEyes.anim_laugh();
+        vTaskDelay(pdMS_TO_TICKS(400));
+        roboEyes.setMood(MOOD_DEFAULT);
+
+    } else if (choice == 16) {
+        // --- CURIOUS: quét mắt NW -> NE -> center ---
+        roboEyes.setPosition(8); // NW
+        vTaskDelay(pdMS_TO_TICKS(400));
+        roboEyes.setPosition(2); // NE
+        vTaskDelay(pdMS_TO_TICKS(300));
+        roboEyes.setPosition(0);
+
+    } else if (choice == 17) {
+        // --- SHY: nhìn xuống trái + blink nhẹ ---
+        roboEyes.setMood(MOOD_TIRED);
+        roboEyes.setPosition(6); // SW
+        vTaskDelay(pdMS_TO_TICKS(300));
+        roboEyes.blink();
+        vTaskDelay(pdMS_TO_TICKS(400));
+        roboEyes.setPosition(0);
+        roboEyes.setMood(MOOD_DEFAULT);
+
     } else {
-        // Chớp mắt tự nhiên
+        // --- STRETCH: vươn lên -> quét trái/phải -> center + blink ---
+        roboEyes.setPosition(1); // N
+        vTaskDelay(pdMS_TO_TICKS(300));
+        roboEyes.setPosition(7); // W
+        vTaskDelay(pdMS_TO_TICKS(200));
+        roboEyes.setPosition(3); // E
+        vTaskDelay(pdMS_TO_TICKS(200));
+        roboEyes.setPosition(0);
         roboEyes.blink();
     }
 }
@@ -216,7 +357,8 @@ void EmojiController::Update() {
 
     if (millis() - last_act_time_ >= auto_interval_ms_) {
         last_act_time_ = millis();
-        RandomAct();
+        // Dung queue de dam bao thread-safe voi AnimationTask (tranh race condition tren I2C)
+        PlayAnimation(AnimationType::RANDOM);
     }
 }
 
@@ -283,6 +425,16 @@ void EmojiController::ExecuteCommand(String cmd) {
         Center();
     } else if (cmd == "thinking") {
         PlayAnimation(AnimationType::THINKING);
+    } else if (cmd == "wink" || cmd == "eye_wink") {
+        PlayAnimation(AnimationType::WINK);
+    } else if (cmd == "excited" || cmd == "eye_excited") {
+        PlayAnimation(AnimationType::EXCITED);
+    } else if (cmd == "curious" || cmd == "eye_curious") {
+        PlayAnimation(AnimationType::CURIOUS);
+    } else if (cmd == "shy" || cmd == "eye_shy") {
+        PlayAnimation(AnimationType::SHY);
+    } else if (cmd == "stretch" || cmd == "eye_stretch") {
+        PlayAnimation(AnimationType::STRETCH);
     } else if (cmd == "help" || cmd == "HELP" || cmd == "?") {
         LOG_PRINTLN(F("====================================================="));
         LOG_PRINTLN(F("   DANH SACH LENH SERIAL ROSHI MIU EILIK             "));
