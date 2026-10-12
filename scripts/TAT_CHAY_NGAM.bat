@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 >nul
-title MIU EILIK - Tắt chạy ngầm
+title MIU-ETS2 - Tắt chạy ngầm
 echo ======================================================================
-echo    MIU EILIK ROBOT - DUNG TIEN TRINH CHAY NGAM
+echo    MIU-ETS2 - DUNG TIEN TRINH CHAY NGAM
 echo ======================================================================
 echo.
 echo [*] Dang huy tu dong khoi dong Registry HKCU\Run...

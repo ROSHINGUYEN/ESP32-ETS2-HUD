@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
-title MIU EILIK - ETS2 Dashboard Companion
+title MIU-ETS2 - Dashboard Companion
 cls
 echo ======================================================================
-echo    MIU EILIK ROBOT - EURO TRUCK SIMULATOR 2 DASHBOARD COMPANION
+echo    MIU-ETS2 - EURO TRUCK SIMULATOR 2 DASHBOARD COMPANION
 echo ======================================================================
 echo.
-echo [*] Cau noi Telemetry giua Game ETS2 va Robot ESP32-S3 qua USB Serial.
+echo [*] Cau noi Telemetry giua Game ETS2 va Taplo OLED ESP32-S3 qua USB Serial.
 echo [*] Tinh nang:
 echo     + Doc truc tiep tu Windows Shared Memory (Khong can app trung gian)
 echo     + Tu dong hien man hinh Loading Splash khi vao game

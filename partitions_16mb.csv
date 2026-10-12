@@ -1,4 +1,4 @@
-# Partition table for MIU EILIK ESP32-S3 (16MB flash)
+# Partition table for MIU-ETS2 ESP32-S3 (16MB flash)
 #   app0  (3MB) + app1 (3MB) cho A/B OTA
 #   nvs   (20KB) cho Preferences
 #   otadata (8KB)

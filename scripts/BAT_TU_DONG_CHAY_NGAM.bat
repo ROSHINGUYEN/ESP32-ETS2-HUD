@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Kich hoat Tu dong Nhan dien Game ETS2 (Chay ngam)
+title Kich hoat Tu dong Nhan dien Game ETS2 (MIU-ETS2)
 cls
 
 echo ======================================================================
-echo    MIU EILIK - KICH HOAT CHE DO TU DONG 100% (CHAY NGAM WINDOWS)
+echo    MIU-ETS2 - KICH HOAT CHE DO TU DONG 100% (CHAY NGAM WINDOWS)
 echo ======================================================================
 echo.
 echo [*] Dang dung tien trinh cu neu dang chay...

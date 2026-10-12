@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ESP32 Miu Eilik Model Context Protocol (MCP) Server
+ESP32 MIU-ETS2 Model Context Protocol (MCP) Server
 Cung cap cong giao tiep JSON-RPC 2.0 (stdio) cho AI IDE (Antigravity/Cursor/Claude)
 de theo doi Telemetry Euro Truck Simulator 2, xem logs he thong va dieu khien ESP32-S3.
 """

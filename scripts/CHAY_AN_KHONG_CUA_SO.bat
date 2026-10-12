@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
-title MIU EILIK - Kích hoạt chạy ngầm
+title MIU-ETS2 - Kích hoạt chạy ngầm
 echo ======================================================================
-echo    MIU EILIK ROBOT - KICH HOAT CHAY NGAM (KHONG HIEN CUA SO)
+echo    MIU-ETS2 - KICH HOAT CHAY NGAM (KHONG HIEN CUA SO)
 echo ======================================================================
 echo.
-echo [*] Dang khoi dong Miu Desktop Companion duoi nen Windows...
+echo [*] Dang khoi dong MIU-ETS2 Companion duoi nen Windows...
 
 start "" pythonw "%~dp0..\tools\miu_desktop_ets2.py"
 

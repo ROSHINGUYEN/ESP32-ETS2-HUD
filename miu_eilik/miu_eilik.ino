@@ -155,7 +155,7 @@ void setup() {
   delay(150);
 
   LOG_PRINTLN(F("\n====================================================="));
-  LOG_PRINTLN(F(" MIU EILIK - HIGH PERFORMANCE ETS2 DASHBOARD         "));
+  LOG_PRINTLN(F(" MIU-ETS2 - HIGH PERFORMANCE COCKPIT DISPLAY        "));
   LOG_PRINTLN(F(" 460800 Baud Link | Zero-Allocation | FreeRTOS Dual "));
   LOG_PRINTLN(F("====================================================="));
 
@@ -163,12 +163,12 @@ void setup() {
   display.begin();
 
   // Khoi dong nhanh man hinh OLED
-  LOG_PRINTLN(F("[BOOT] Khoi dong he thong Miu Eilik (ETS2 Cockpit Dashboard)..."));
+  LOG_PRINTLN(F("[BOOT] Khoi dong he thong MIU-ETS2 (Telemetry Display)..."));
   oled.clearDisplay();
   oled.setTextSize(1);
   oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(20, 15);
-  oled.print(F("MIU EILIK READY"));
+  oled.setCursor(22, 15);
+  oled.print(F("MIU-ETS2 READY"));
   oled.setCursor(24, 30);
   oled.print(F("ETS2 COCKPIT"));
   oled.setCursor(16, 45);

@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title MIU EILIK - Mo phong lai xe ETS2 Demo
+title MIU-ETS2 - Mo phong lai xe ETS2 Demo
 cls
 echo ======================================================================
-echo    MIU EILIK ROBOT - CHE DO MO PHONG DEMO (KHONG CAN BAT GAME)
+echo    MIU-ETS2 - CHE DO MO PHONG DEMO (KHONG CAN BAT GAME)
 echo ======================================================================
 echo.
 echo [*] Mo phong lai xe: Tang toc, Chuyen so, Xi-nhan, RPM, Xang tren Robot.

@@ -1,6 +1,6 @@
-# ROSHI MIU EILIK — KIẾN TRÚC & LỘ TRÌNH PHÁT TRIỂN (ROADMAP)
+# MIU-ETS2 — KIẾN TRÚC & LỘ TRÌNH PHÁT TRIỂN (ROADMAP)
 
-> **Dự án:** Robot để bàn thông minh ROSHI Miu Eilik (ESP32-S3) kết hợp PC Desktop Companion  
+> **Dự án:** Hệ thống Taplo Hiển Thị & Render Dữ Liệu Game ETS2/ATS (ESP32-S3) kết hợp PC Desktop Companion  
 > **Cập nhật:** 2026-10-12  
 > **Định hướng cốt lõi:** Tinh giản tối đa — Siêu ổn định — Màn hình biểu cảm OLED + HUD Game Dashboard (ETS2 / Sim Racing) — Desktop Companion PC tốc độ cao.
 

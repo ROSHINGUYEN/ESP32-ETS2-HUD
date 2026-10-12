@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Tat Tu dong Chay ngam Miu Eilik
+title Tat Tu dong Chay ngam MIU-ETS2
 cls
 
 echo ======================================================================
-echo    MIU EILIK - TẮT CHẾ ĐỘ TỰ ĐỘNG CHẠY NGẦM
+echo    MIU-ETS2 - TẮT CHẾ ĐỘ TỰ ĐỘNG CHẠY NGẦM
 echo ======================================================================
 echo.
 echo [*] Dang huy dang ky khoi dong Registry HKCU\Run...

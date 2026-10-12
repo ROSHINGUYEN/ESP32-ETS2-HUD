@@ -1462,7 +1462,7 @@ class Ets2DesktopCompanion:
     def run(self):
         self.running = True
         print("\n" + "=" * 70)
-        print("  MIU EILIK - EURO TRUCK SIMULATOR 2 DASHBOARD COMPANION")
+        print("  MIU-ETS2 - TELEMETRY & GAME DATA DISPLAY COMPANION")
         print(f"  Port: {self.port_name or 'Auto-Detect'} | Rate: {int(1.0 / self.target_interval)} FPS")
         if self.demo:
             print("  Che do: MO PHONG XE CHAY (Demo Mode)")
@@ -1546,7 +1546,7 @@ class Ets2DesktopCompanion:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Miu Eilik ETS2 Dashboard Companion")
+    parser = argparse.ArgumentParser(description="MIU-ETS2 - Telemetry & Game Data Display Companion")
     parser.add_argument("--port", "-p", default=None, help="Cong COM (vi du: COM4, COM5)")
     parser.add_argument("--baud", "-b", type=int, default=DEFAULT_BAUD, help="Baud rate (mac dinh: 115200)")
     parser.add_argument("--server", "-s", default=None, help="URL Telemetry Server (mac dinh: 25555 cho ETS2)")
