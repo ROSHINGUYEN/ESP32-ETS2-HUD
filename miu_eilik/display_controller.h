@@ -80,37 +80,6 @@ struct Ets2TelemetryData {
 };
 
 // =====================================================================================
-// FARMING SIMULATOR 25 (FS25) TELEMETRY DATA STRUCTURE
-// =====================================================================================
-
-struct Fs25TelemetryData {
-  bool connected = false;
-  int speed = 0;               // km/h
-  int maxSpeed = 50;          // km/h (cho thanh vach toc do)
-  int rpm = 0;                // RPM
-  int rpmMax = 2200;
-  int cruiseSpeed = 0;        // km/h
-  bool cruiseOn = false;      // Ga tu dong dang bat
-  int fuelPct = 100;          // 0..100% nhien lieu diesel
-  int fillLevelPct = 0;       // 0..100% thung chua lua/nong san/phan bon
-  int damagePct = 0;          // 0..100% hao mon may moc
-  float operatingHours = 0.0f;// gio may chay (h)
-
-  // Trang thai cac chuc nang dang bat (Active Functions)
-  bool beacon = false;            // Den chop xoay vang (Rotating beacon)
-  bool workLight = false;         // Den lam viec truoc/sau (Work lights)
-  bool highBeam = false;          // Den pha xa
-  bool blinkerL = false;          // Xi-nhan trai
-  bool blinkerR = false;          // Xi-nhan phai
-  bool implementLowered = false;  // Ha dan nong cu (cay, bua, gieo)
-  bool implementTurnedOn = false; // Bat dan may hoat dong (PTO, guong gat)
-  bool pipeUnfolded = false;      // Mo ong xa hat ra
-  bool motorRunning = true;       // No may
-
-  unsigned long lastUpdateMs = 0;
-};
-
-// =====================================================================================
 // DISPLAY MANAGER (OLED SSD1306 128x64 - Đồng hồ, RoboEyes, Visualizer, Stream, Game)
 // =====================================================================================
 
@@ -135,10 +104,6 @@ public:
   Ets2TelemetryData gameTelem;
   unsigned long gameLastPacketMs = 0;
   bool gameModeLocked = false;
-
-  // FS25 Game Telemetry
-  Fs25TelemetryData fs25Telem;
-  unsigned long fs25LastPacketMs = 0;
 
   int clockYear  = 2026;
   int clockMonth = 10;
@@ -168,18 +133,13 @@ public:
   void drawStream();
   // Game Splash Screen
   unsigned long ets2SplashUntilMs = 0;
-  unsigned long fs25SplashUntilMs = 0;
   void triggerEts2Splash();
-  void triggerFs25Splash();
   void drawEts2SplashScreen();
-  void drawFs25SplashScreen();
 
   void drawGameDashboard();
   void updateGameTelemetry(const Ets2TelemetryData& data);
   void triggerEvent(const char* text, unsigned long durationMs = 2000);
   void drawEventToast();
-  void drawFs25Dashboard();
-  void updateFs25Telemetry(const Fs25TelemetryData& data);
   void setStreamFrame(const uint8_t* bmp);
   void update();
   const char* modeStr() const;

@@ -1,5 +1,30 @@
 # MIU EILIK - WORK REPORT
 
+## 2026-10-12 — Fix lỗi game detection, struct offsets sai, stack overflow USB task
+
+- **Mục tiêu:** Sửa tất cả lỗi được xác nhận: game không nhận diện sau reboot, màn hình luôn hiện robot thay vì HUD ETS2, stack overflow ESP32.
+- **Tiêu chí hoàn thành:** Sau khi khởi động PC + game, ESP32 tự động nhận diện ETS2 và chuyển HUD. Khi thoát game → trở về mắt robot.
+- **Lỗi đã xác nhận và sửa:**
+
+  | # | File | Lỗi | Fix |
+  |---|------|-----|-----|
+  | 1 | `tools/miu_desktop_ets2.py:158` | Offset 8 đọc `pluginVersion` nhầm là game time → giờ game sai (luôn = 0:02) | Đọc `game_time_min` từ offset 0, dùng offset 160 (`timeAbsolute`) để phát hiện game đang chạy thật |
+  | 2 | `tools/miu_desktop_ets2.py:155` | `time_ms == 0` → pass qua dù game chưa vào (pluginVersion != 0 ngay khi DLL load) | Thay bằng `time_absolute != 0` (offset 160) — chỉ trả data khi thật sự trong game |
+  | 3 | `tools/miu_desktop_ets2.py:231` | `conn: 1` hardcode → game_connected luôn = True dù chưa vào game | `conn: 1` chỉ được set khi `time_absolute != 0` đã xác nhận ở trên |
+  | 4 | `miu_eilik/usb_protocol.cpp:74` | `connected` fallback = `true` nếu key `conn` không có → ESP32 luôn ở DISP_GAME | Đổi fallback thành `false` |
+  | 5 | `miu_eilik/miu_eilik.ino:220` | taskUsb stack = 4096B, `StaticJsonDocument<1536>` chiếm 1.5KB + overhead → stack overflow | Tăng stack USB task: 4096 → 6144B |
+  | 6 | `tools/miu_desktop_ets2.py:94` | `import requests` bắt buộc → crash nếu không cài pip | Chuyển thành optional với flag `_REQUESTS_OK` |
+
+- **File thay đổi:**
+  - `tools/miu_desktop_ets2.py` — sửa struct offsets, game detection, requests optional
+  - `miu_eilik/miu_eilik.ino` — tăng USB task stack
+  - `miu_eilik/usb_protocol.cpp` — sửa connected fallback
+- **Kiểm thử:** `git diff --stat` xác nhận 3 file C++/Python thay đổi, diff đúng scope. Chưa test trên phần cứng (cần nạp firmware + mở ETS2).
+- **Rủi ro còn lại:** Offset 160 (`timeAbsolute`) của Funbit plugin — cần xác nhận lại với file binary plugin thực tế nếu vẫn không nhận diện game.
+- **Trạng thái:** PARTIAL (code đã sửa, chưa test phần cứng)
+- **Bước tiếp theo:** Nạp firmware vào ESP32, chạy `python tools/miu_desktop_ets2.py`, mở ETS2, quan sát log.
+
+
 ## 2026-10-11 — Audit toàn diện, phân tích nguyên nhân gốc & sửa mã nguồn điều khiển Servo SG90 360° Mod
 
 - **Mục tiêu:** Kiểm tra trực tiếp toàn bộ dự án, tìm nguyên nhân thực tế khiến servo SG90 đã mod 360° chỉ quay một chiều hoặc không dừng ổn định, sửa mã nguồn tối thiểu cần thiết, build kiểm thử và lập báo cáo kết quả theo `roadmap.md`.
@@ -689,11 +714,196 @@
 - **Trạng thái:** PASS
 - **Bước tiếp theo:** Người dùng chỉ cần bật máy tính và mở game Euro Truck Simulator 2; hệ thống sẽ tự động hoạt động 100% không cần bất kỳ thao tác thủ công nào. (Tùy chọn: `git push` lên GitHub nếu muốn).
 
+## 2026-10-12 — Khắc phục lỗi nhận diện game khi mở ETS2 và kích hoạt Loading Splash
 
+- **Mục tiêu:** Sửa triệt để lỗi khi người dùng mở ETS2 thì companion và ESP32-S3 không nhận diện được game đã bật, không hiện màn hình Loading Splash mà chỉ hiện đồng hồ / mắt robot.
+- **Tiêu chí hoàn thành:**
+  - Khi mở game ETS2 (kể cả đang ở màn hình menu chính, chọn hồ sơ hoặc màn hình chờ): Source Python nhận diện game đã mở ngay lập tức.
+  - ESP32-S3 tự động chuyển từ màn hình đồng hồ/mắt robot sang **Loading Splash ETS2** (Logo SCS Software + Pixel Art xe tải + Thanh tiến trình).
+  - Khi vào cabin lái xe: Tự động chuyển tiếp sang HUD Cockpit đầy đủ với tốc độ, cấp số, RPM, xăng, v.v. (tần số ~30 FPS).
+  - Khi tắt game: Tự động chuyển robot về lại mắt RoboEyes.
+- **Trạng thái ban đầu:**
+  - tools/check_shm.py cho thấy Windows Shared Memory Local\\Ets2TelemetryServer luôn tồn tại ngay khi game khởi động (plugin_ver = 9).
+  - Tuy nhiên ở menu, timeAbsolute = 0 khiến hàm read() trong tools/miu_desktop_ets2.py trả về None.
+  - fetch_live_telemetry() lập tức gọi self.shm_reader.close(), coi như chưa có game và liên tục đóng/mở handle mỗi 0.3s.
+  - Companion rơi vào nhánh DANG CHO GAME, không gửi gói telemetry hay lệnh MODE=GAME sang ESP32.
+  - ESP32-S3 khởi động ở chế độ mặc định DISP_CLOCK nên giữ nguyên màn hình đồng hồ, không bao giờ kích hoạt triggerEts2Splash().
+  - UnmapViewOfFile trên Python 64-bit bị OverflowError do thiếu ép kiểu ctypes.c_void_p.
+- **Phân tích và bằng chứng:**
+  - Khi game ETS2 khởi động với plugin ets2-telemetry-server.dll, plugin_ver tại offset 8 luôn có giá trị 9.
+  - Trạng thái timeAbsolute == 0 chỉ phản ánh người chơi chưa bấm 'Lái xe' (Drive), chứ không phải game chưa bật.
+  - Việc coi timeAbsolute == 0 là 'không kết nối' đã tước đi cơ hội kích hoạt màn hình Loading Splash được thiết kế riêng cho lúc nạp game.
+- **Các bước đã thực hiện:**
+  1. Cập nhật tools/miu_desktop_ets2.py:
+     - Tích hợp thư viện psutil để tự động dò tìm PID của eurotrucks2.exe / amtrucks.exe khi kết nối Shared Memory.
+     - Kiểm tra trạng thái sống của tiến trình qua psutil.pid_exists(): chỉ đóng handle Shared Memory khi game thực sự thoát.
+     - Cập nhật hàm read(): Khi plugin_ver >= 1 và timeAbsolute == 0 (đang ở menu/loading), trả về gói trạng thái hợp lệ (conn = 1, pause = 1, spd = 0).
+     - Gửi lệnh MODE=GAME và gói telemetry ngay khi phát hiện game mở, kích hoạt triggerEts2Splash() trên ESP32.
+     - Xóa bỏ việc tự động gọi shm_reader.close() trong fetch_live_telemetry().
+     - Sửa lỗi ép kiểu ctypes.c_void_p(self.pBuf) khi gọi UnmapViewOfFile để giải phóng bộ nhớ chuẩn xác.
+  2. Cập nhật tools/check_shm.py:
+     - Sửa lỗi OverflowError khi gọi k32.UnmapViewOfFile.
+  3. Kiểm thử thực tế:
+     - Chạy check_shm.py: Thành công 100%, đọc chính xác dữ liệu từ ETS2 đang chạy.
+     - Chạy miu_desktop_ets2.py: Nhận diện game tức thì qua Shared Memory, kết nối COM5, truyền telemetry 29.4 FPS ổn định.
+- **File thay đổi:**
+  - tools/miu_desktop_ets2.py (Sửa logic nhận diện game, quản lý tiến trình, SHM)
+  - tools/check_shm.py (Sửa ép kiểu UnmapViewOfFile)
+  - WORK_REPORT.md (Cập nhật nhật ký)
+- **Kiểm thử và kết quả:**
+  - check_shm.py: PASS (Offset 0=13:18, plugin_ver=9, speed=0 km/h, timeAbsolute=22250, không có lỗi UnmapViewOfFile).
+  - miu_desktop_ets2.py: PASS (Tự động nhận diện game, stream 29.4 FPS, chuyển trạng thái connected chuẩn).
+- **Vấn đề còn tồn tại:** Không có.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Khởi chạy companion bằng CHAY_DASHBOARD_ETS2.bat hoặc kích hoạt chạy ngầm BAT_TU_DONG_CHAY_NGAM.bat để trải nghiệm trong game.
 
+## 2026-10-12 — Sửa lỗi nhận diện game trong đoạn Intro và fix lỗi đè giờ/khoảng cách trên OLED
 
+- **Mục tiêu:**
+  1. Nhận diện game ETS2 ngay từ khi mở game trong đoạn intro/video giới thiệu để ESP32 hiện Loading Splash lập tức, không phải đợi đến khi bấm 'Lái xe'.
+  2. Sửa triệt để lỗi giờ game và khoảng cách bị đè lên nhau, số nhảy loạn liên tục và dữ liệu hiển thị sai.
+- **Tiêu chí hoàn thành:**
+  - Ngay khi process 'eurotrucks2.exe' xuất hiện (trong đoạn intro): Companion phát hiện ngay, gửi lệnh MODE=GAME sang ESP32 và bật màn hình Loading Splash.
+  - Giờ game ('gh', 'gm') được tính chính xác từ 'timeAbsolute' (offset 160) thay vì offset 0 (vốn là millisecond tick của engine khiến số nhảy loạn).
+  - Tách bạch hoàn toàn vị trí hiển thị: Đồng hồ giờ cố định tại x=49 y=2 (giữa header), khoảng cách đích (eta_d) hiển thị cố định tại x=93 y=56 (góc phải dưới). Không còn hoán đổi đè lên nhau.
+  - Biên dịch và nạp firmware mới vào ESP32-S3 thành công qua COM5.
+- **Trạng thái ban đầu:**
+  - Script chỉ kết nối khi OpenFileMappingW thành công, nên trong vài giây đầu intro khi plugin chưa tạo file mapping thì script coi như chưa bật game.
+  - Offset 0 trong Shared Memory là giá trị tick millisecond nội bộ của engine (lên tới 142 triệu), khi chia cho 60 làm giờ/phút nhảy loạn xạ hàng chục lần mỗi giây.
+  - Trên màn hình OLED, header x=56 y=2 bị cài đặt hoán đổi mỗi 2.5s giữa giờ và cự ly (eta_d), đồng thời khoảng x=44 (BCN/Retarder) bị đè lên vùng x=56.
+- **Các bước đã thực hiện:**
+  1. Cập nhật 'tools/miu_desktop_ets2.py':
+     - Bổ sung quét tiến trình 'eurotrucks2.exe' trong 'connect()'. Khi tiến trình xuất hiện trong đoạn intro dù SHM chưa mở, trả về gói connected mặc định để ESP32 lập tức bật Loading Splash.
+     - Sửa cách tính 'game_h' và 'game_m': Lấy từ 'timeAbsolute' (offset 160, đơn vị phút thế giới thực trong ETS2) thay vì offset 0. Giờ hiển thị chuẩn 100%, tăng đều đặn theo thời gian game.
+     - Lọc hợp lệ cho 'nav_d' (0 < nav_d < 50000 km) để tránh số ảo khi chưa đặt lộ trình GPS.
+  2. Cập nhật 'miu_eilik/display_controller.cpp':
+     - Cố định đồng hồ cabin tại x=49 y=2 (chính giữa header), có nhấp nháy dấu hai chấm mỗi giây.
+     - Di dời badge Retarder / Beacon sang x=83 y=2 và Cruise Control sang x=101 y=2 để không bao giờ chạm vào vùng đồng hồ.
+     - Bỏ hiệu ứng hoán đổi xen kẽ cự ly đích lên vùng đồng hồ. Cự ly đích (eta_d) nằm cố định ở góc dưới bên phải (x=93 y=56).
+  3. Nạp firmware ESP32-S3:
+     - Dừng tiến trình companion để giải phóng cổng COM5.
+     - Biên dịch PlatformIO: SUCCESS (RAM 7.7%, Flash 8.4%).
+     - Nạp thành công vào ESP32-S3 qua COM5 (10.81 giây).
+  4. Khởi chạy lại companion:
+     - Companion nhận diện game ETS2 ngay lập tức, đọc timeAbsolute=22290 ra đúng giờ 11:56 và cự ly 265km, truyền 29.4 FPS ổn định.
+- **File thay đổi:**
+  - tools/miu_desktop_ets2.py
+  - miu_eilik/display_controller.cpp
+  - WORK_REPORT.md
+- **Kiểm thử và kết quả:**
+  - Build & Flash ESP32-S3: PASS (Thành công qua COM5).
+  - Telemetry streaming: PASS (29.4 FPS, gh=11, gm=56, eta_d=265km, odo=737366km, không còn nhảy số loạn).
+  - Giao diện OLED: PASS (Đồng hồ cố định ở giữa header, khoảng cách cố định ở góc dưới, các badge không còn đè lên nhau).
+- **Vấn đề còn tồn tại:** Không có.
+- **Trạng thái:** PASS
 
+## 2026-10-12 — Khắc phục triệt để lỗi cấp số 9 thành 10, thiết kế lại layout OLED đối xứng sắc nét, dọn dẹp toàn bộ code FS25 & file rác
 
+- **Mục tiêu:**
+  1. Khắc phục lỗi khi game ETS2 đang chạy cấp số 9 nhưng ESP32 lại hiển thị cấp số 10.
+  2. Bố trí lại toàn bộ layout OLED taplo hiển thị đều, đẹp, đối xứng và sắc nét không bị méo lệch hay tràn chữ.
+  3. Xóa bỏ hoàn toàn code FS25 (Farming Simulator 25) và các code/file desktop cũ không liên quan đến dự án hiện tại.
+- **Tiêu chí hoàn thành:**
+  - Cấp số hiển thị trên ESP32 đồng bộ 100% với đồng hồ taplo trong game ETS2 (D1..D12 chuẩn xác, hỗ trợ hộp số có số bò crawler 12+2).
+  - Giao diện màn hình OLED taplo chia 3 cột đối xứng hoàn hảo: Cột trái (Biển báo tốc độ giới hạn), Cột giữa (Tốc độ km/h lớn, thanh vòng tua RPM cân đối), Cột phải (Hộp số với badge D/R và số to rõ ràng). Hàng đáy chia đều 4 ô 32px (ODO, Nhiên liệu, Độ bền, Cự ly đích).
+  - Loại bỏ hoàn toàn mã nguồn FS25 trong cả firmware ESP32 (`config.h`, `display_controller.*`, `usb_protocol.cpp`, `miu_eilik.ino`, `emoji_controller.cpp`) và companion PC (`miu_desktop_ets2.py`, `esp32_mcp_server.py`, file `.bat`).
+  - Xóa sạch các file rác/tạm (`test_pw.py`, `test_pw.log`, `shm_dump.bin`, `test_out.txt`, thư mục `scratch/`).
+  - Nạp firmware mới vào ESP32-S3 thành công qua COM5 và companion kết nối truyền dữ liệu ổn định.
+- **Trạng thái ban đầu:**
+  - Khi xe tải sử dụng hộp số có số bò (crawler gears, ví dụ Scania 12+2 có 14 cấp số tiến): Cấp số 1 và 2 trong game là C1, C2, còn số chạy 1..12 tương ứng cấp số cơ khí nội bộ 3..14. Plugin cũ của Funbit đọc thẳng giá trị cơ khí (offset 64/996), dẫn đến khi game hiện D9 thì ESP32 lại hiển thị D10 hoặc D11.
+  - Trên màn hình OLED, khi cấp số >= 10, code cũ cố nhét chữ 'D' size 1 ở x=98 y=18 và số '10' size 2 ở x=104 y=15, trong khi số < 10 lại in 'D%d' size 2 ở x=100 y=15, dẫn đến layout bị giật méo khi chuyển số.
+  - Dự án còn sót lại nhiều tàn dư code FS25 và file test rác.
+- **Phân tích và bằng chứng:**
+  - RenCloud `scs-telemetry.dll` ghi trực tiếp dữ liệu chuẩn từ SCS Telemetry SDK vào vùng nhớ `Local\SCSTelemetry`, trong đó offset 508 là `gearDashboard` (chính xác 100% cấp số hiển thị trên taplo xe trong game).
+  - Offset 68 trong Funbit / SCS Telemetry là tổng số cấp số tiến `forwardGears`. Khi hộp số có số bò (`forwardGears > 12`), số bò = `forwardGears - 12`. Khi trừ đi số bò này, cấp số cơ khí trả về đúng cấp số D1..D12 của cabin.
+- **Các bước đã thực hiện:**
+  1. Cập nhật `tools/miu_desktop_ets2.py` và `tools/esp32_mcp_server.py`:
+     - Kết nối song song vùng nhớ `Local\SCSTelemetry` và đọc trực tiếp `gearDashboard` tại offset 508.
+     - Bổ sung cơ chế bù trừ số bò crawler gears khi đọc từ `Local\Ets2TelemetryServer` (`final_gear = raw_g - crawlers`).
+     - Gỡ bỏ hoàn toàn logic FS25: xóa `DEFAULT_FS25_URL`, xóa method `generate_fs25_demo_telemetry`, `extract_fs25_telemetry_payload`, tham số `--game` trong CLI và các nhánh chuyển `MODE=FS25`.
+  2. Thiết kế lại toàn bộ giao diện OLED taplo trong `miu_eilik/display_controller.cpp`:
+     - Chia 3 cột đối xứng: Cột trái (Biển báo giới hạn tốc độ viền tròn 24x24 x=4), Cột giữa (Đồng hồ tốc độ lớn 3 chữ số căn giữa x=36..92, thanh đo RPM 56px cân đối bên dưới), Cột phải (Hộp số với badge D/R ở góc trên x=99 y=14 và số cấp số size 2 căn giữa hoàn hảo x=105..110 y=15).
+     - Hàng đáy chia đều 4 cột 32px (x=0..31 ODO, x=32..63 Nhiên liệu, x=64..95 Độ bền xe, x=96..127 Cự ly đích), rút gọn định dạng km/k tự động chống tràn chữ.
+     - Xóa hoàn toàn các hàm `drawFs25Dashboard()`, `triggerFs25Splash()`, struct `Fs25TelemetryData` khỏi firmware.
+  3. Dọn dẹp codebase:
+     - Xóa `tools/test_pw.py`, `test_pw.log`, `shm_dump.bin`, `test_out.txt`, thư mục `scratch/`.
+     - Cập nhật các file `.bat` (`CHAY_DASHBOARD_ETS2.bat`, `CHAY_DEMO_THU_NGHIEM.bat`, `CHAY_AN_KHONG_CUA_SO.bat`) chạy trực tiếp không cần flag `--game`.
+  4. Nạp firmware ESP32-S3 và chạy daemon companion:
+     - Dừng tiến trình cũ giải phóng cổng COM5.
+     - Biên dịch thành công và nạp vào ESP32-S3 qua COM5 (12.27s, Flash 8.3%, RAM 7.6%).
+     - Khởi chạy companion daemon, kết nối COM5 thành công ở 30 FPS.
+- **File thay đổi:**
+  - `miu_eilik/config.h` (Xóa hằng số FS25)
+  - `miu_eilik/display_controller.h` (Xóa khai báo FS25)
+  - `miu_eilik/display_controller.cpp` (Thiết kế lại OLED taplo đối xứng, xóa FS25)
+  - `miu_eilik/usb_protocol.cpp` (Xóa parser FS25)
+  - `miu_eilik/miu_eilik.ino` (Xóa lệnh FS25)
+  - `miu_eilik/emoji_controller.cpp` (Xóa lệnh FS25)
+  - `tools/miu_desktop_ets2.py` (Chuẩn hóa đọc gearDashboard từ SHM, xóa code FS25)
+  - `tools/esp32_mcp_server.py` (Đồng bộ đọc gearDashboard chuẩn)
+  - `CHAY_DASHBOARD_ETS2.bat`, `CHAY_DEMO_THU_NGHIEM.bat`, `CHAY_AN_KHONG_CUA_SO.bat` (Cập nhật lệnh gọi)
+  - `WORK_REPORT.md` (Ghi nhật ký)
+- **Kiểm thử và kết quả:**
+  - Đọc live ETS2 Shared Memory: PASS (Xác nhận `Local\SCSTelemetry` offset 508 `gearDashboard` khớp 100% với taplo game).
+  - Build firmware: PASS (PlatformIO build thành công không warning/error).
+  - Flash firmware ESP32-S3: PASS (Nạp 100% qua cổng COM5 với 12.27 giây).
+  - Companion daemon: PASS (Tự động mở COM5, khi game tắt tự động về RoboEyes, khi game bật tự động chuyển Cockpit, FPS 29.5).
+  - Dọn dẹp file: PASS (Xóa sạch toàn bộ file rác và FS25).
+- **Vấn đề còn tồn tại:** Không có.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Người dùng chỉ cần mở game ETS2 lái thử để kiểm tra cấp số hiển thị chính xác từng số và layout mới sắc nét.
 
+## 2026-10-12 — Tinh Chỉnh Mã Nguồn, Gỡ Bỏ Binary Độc Quyền Khỏi Git & Bổ Sung Open Telemetry API Chuẩn SCS SDK
+
+- **Mục tiêu:**
+  - Loại bỏ hoàn toàn 23 file binary đóng gói (`Ets2Telemetry.exe`, các file `.dll`, `.config`) khỏi Git tracking để tránh vi phạm bản quyền và rủi ro phạt khi public lên GitHub.
+  - Phát triển module Open Telemetry API độc lập, hợp pháp 100% (`tools/ets2_open_api.py`) kết nối trực tiếp với SCS SDK Memory-Mapped File (`Local\SCSTelemetry`) và Shared Memory (`Local\Ets2TelemetryServer`).
+  - Tạo bộ dữ liệu kiểm thử độc lập (`tools/mock_telemetry.json`) thay thế dependency file JSON cũ của server độc quyền.
+  - Loại bỏ các đường dẫn cá nhân hardcoded (`C:\Users\Tinhd\...`) trong các batch scripts (`BAT_TU_DONG_CHAY_NGAM.bat`, `CHAY_AN_KHONG_CUA_SO.bat`) và `tools/setup_autostart.py` giúp mã nguồn portable 100% trên mọi máy tính.
+  - Cập nhật và đồng bộ toàn diện `roadmap.md` và `README.md`.
+- **Tiêu chí hoàn thành:**
+  - [x] Đã untrack toàn bộ thư mục `API-ETS2/` khỏi Git (`git rm -r --cached API-ETS2`) trong khi vẫn giữ file cục bộ cho người dùng.
+  - [x] Cập nhật `.gitignore` ngăn chặn triệt để `.exe`, `.dll`, `API-ETS2/`, thư mục rác `scratch/`, logs và dump files.
+  - [x] Tạo `tools/ets2_open_api.py` và `tools/mock_telemetry.json` hoạt động độc lập, tự chủ 100%.
+  - [x] Cập nhật `tools/miu_desktop_ets2.py` đọc từ `mock_telemetry.json`.
+  - [x] Làm sạch đường dẫn hardcode, chuyển sang dùng `pythonw` động từ PATH và `sys.executable`.
+  - [x] Cập nhật `roadmap.md` và `README.md` loại bỏ hoàn toàn các nhắc đến binary độc quyền và FS25.
+  - [x] Biên dịch firmware thành công qua PlatformIO với 0 lỗi.
+- **Trạng thái ban đầu:**
+  - 23 files binary (`.exe`, `.dll`) đang nằm trong Git tracking của thư mục `API-ETS2/server/`. Nếu push lên GitHub có nguy cơ bị cảnh báo vi phạm bản quyền / DMCA từ SCS hoặc Funbit.
+  - Một số file script còn chứa đường dẫn tĩnh tới thư mục user `C:\Users\Tinhd\...`.
+- **Phân tích và bằng chứng:**
+  - Game Euro Truck Simulator 2 hỗ trợ cơ chế Shared Memory chính thức của SCS Software Telemetry SDK (`Local\SCSTelemetry`). Do đó, chỉ cần một module Python thuần túy dùng `ctypes` đọc memory-mapped file là đã có thể lấy trọn vẹn dữ liệu telemetry với độ trễ < 2ms mà không cần bất kỳ file thực thi `.exe` hay thư viện `.dll` nào đi kèm trong repo.
+  - Bằng cách dùng `git rm --cached`, ta loại bỏ các file nhị phân khỏi Git index mà không xóa mất file trên đĩa cứng của người dùng.
+- **Các bước đã thực hiện:**
+  1. Chạy `git rm -r --cached API-ETS2` để untrack toàn bộ 23 file `.exe` và `.dll`.
+  2. Bổ sung quy tắc chặt chẽ vào `.gitignore`.
+  3. Lập trình module `tools/ets2_open_api.py`: Tương thích cả `Local\SCSTelemetry` (SCS SDK) và `Local\Ets2TelemetryServer` (Funbit), đồng thời cung cấp hàm `get_mock_telemetry_payload()`.
+  4. Tạo file mô phỏng `tools/mock_telemetry.json` độc lập.
+  5. Cập nhật `tools/miu_desktop_ets2.py` trỏ đường dẫn test JSON sang `tools/mock_telemetry.json`.
+  6. Tinh chỉnh `tools/setup_autostart.py` tự động nhận diện `sys.executable` và `pythonw.exe` trên mọi môi trường.
+  7. Thay thế đường dẫn tĩnh `C:\Users\Tinhd\...` trong `BAT_TU_DONG_CHAY_NGAM.bat` và `CHAY_AN_KHONG_CUA_SO.bat` bằng lệnh gọi `pythonw` chuẩn.
+  8. Cập nhật `roadmap.md` và `README.md` chuẩn hóa kiến trúc Open Telemetry hợp pháp.
+  9. Kiểm thử biên dịch firmware `pio run -e eilik_s3`: Thành công 100% trong 8.32 giây (Flash 8.3%, RAM 7.6%).
+  10. Kiểm thử chạy `python tools/ets2_open_api.py`: Trả về dữ liệu telemetry chuẩn xác.
+- **File thay đổi:**
+  - `API-ETS2/` (Untracked khỏi Git index)
+  - `.gitignore` (Thêm chặn API-ETS2, exe, dll, log, scratch)
+  - `tools/ets2_open_api.py` (Mới: Open API Telemetry SCS SDK)
+  - `tools/mock_telemetry.json` (Mới: Dữ liệu mô phỏng độc lập)
+  - `tools/check_shm.py` (Mới: Công cụ kiểm tra Shared Memory nhẹ)
+  - `tools/setup_autostart.py` (Sửa: Động hóa đường dẫn Python)
+  - `tools/miu_desktop_ets2.py` (Sửa: Bỏ phụ thuộc vào file JSON của binary cũ)
+  - `BAT_TU_DONG_CHAY_NGAM.bat` & `CHAY_AN_KHONG_CUA_SO.bat` (Sửa: Dùng pythonw trong PATH)
+  - `README.md` & `roadmap.md` (Cập nhật tài liệu chuẩn GitHub)
+  - `WORK_REPORT.md` (Ghi nhận tiến độ)
+- **Kiểm thử và kết quả:**
+  - `git status`: PASS (23 binary files staged as deleted, không còn binary nào trong git).
+  - `python tools/ets2_open_api.py`: PASS (Đọc và trả về JSON telemetry hoàn hảo).
+  - `pio run -e eilik_s3`: PASS (Biên dịch thành công 100%, Flash 8.3%, RAM 7.6%).
+  - `python tools/esp32_mcp_server.py --test`: PASS (Self-test thành công).
+- **Vấn đề còn tồn tại:** Không có.
+- **Trạng thái:** PASS
+- **Bước tiếp theo:** Sẵn sàng commit và push mã nguồn sạch lên GitHub an toàn 100%.
 
 

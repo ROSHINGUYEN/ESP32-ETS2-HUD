@@ -90,16 +90,44 @@ class DirectShmReader:
             odometer = struct.unpack_from("<f", raw, 680)[0]
             cc_spd = struct.unpack_from("<f", raw, 684)[0] * 3.6
             disp_gear = struct.unpack_from("<i", raw, 996)[0]
+            fwd_gears = struct.unpack_from("<i", raw, 68)[0]
             nav_d = struct.unpack_from("<f", raw, 1000)[0] / 1000.0
             nav_lim = struct.unpack_from("<f", raw, 1008)[0] * 3.6
             spd_kmh = max(0, int(round(speed_ms * 3.6)))
+
+            # Doc gearDashboard tu Local\SCSTelemetry neu co
+            final_gear = None
+            try:
+                h_scs = self.k32.OpenFileMappingW(0x0004, False, "Local\\SCSTelemetry")
+                if h_scs:
+                    p_scs = self.k32.MapViewOfFile(h_scs, 0x0004, 0, 0, 1024)
+                    if p_scs:
+                        raw_scs = ctypes.string_at(p_scs, 1024)
+                        scs_dash_gear = struct.unpack_from("<i", raw_scs, 508)[0]
+                        scs_mech_gear = struct.unpack_from("<i", raw_scs, 504)[0]
+                        if scs_dash_gear != 0:
+                            final_gear = scs_dash_gear
+                        elif scs_mech_gear == 0:
+                            final_gear = 0
+                        self.k32.UnmapViewOfFile(ctypes.c_void_p(p_scs))
+                    self.k32.CloseHandle(h_scs)
+            except Exception:
+                pass
+
+            if final_gear is None:
+                raw_g = disp_gear if disp_gear != 0 else gear
+                if fwd_gears > 12 and raw_g > 0:
+                    crawlers = fwd_gears - 12
+                    final_gear = (raw_g - crawlers) if raw_g > crawlers else raw_g
+                else:
+                    final_gear = raw_g
 
             return {
                 "game": "ets2",
                 "speed_kmh": spd_kmh,
                 "speed_limit_kmh": int(round(nav_lim)) if nav_lim > 0 else 0,
-                "gear": int(disp_gear if disp_gear != 0 else gear),
-                "gear_str": f"D{disp_gear or gear}" if (disp_gear or gear) > 0 else ("N" if (disp_gear or gear) == 0 else f"R{abs(disp_gear or gear)}"),
+                "gear": int(final_gear),
+                "gear_str": f"D{final_gear}" if final_gear > 0 else ("N" if final_gear == 0 else f"R{abs(final_gear)}"),
                 "rpm": int(round(rpm)),
                 "rpm_max": int(round(rpmMax if rpmMax > 500 else 2500)),
                 "fuel_pct": int(round(100.0 * fuel / fuelCap)) if fuelCap > 0 else 0,

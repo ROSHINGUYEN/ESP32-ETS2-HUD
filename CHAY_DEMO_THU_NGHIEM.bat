@@ -12,5 +12,5 @@ echo.
 echo ======================================================================
 echo.
 
-python "%~dp0tools\miu_desktop_ets2.py" --game ets2 --demo %*
+python "%~dp0tools\miu_desktop_ets2.py" --demo %*
 pause

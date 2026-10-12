@@ -39,3 +39,16 @@ miu_eilik/miu_eilik.ino.dSYM/
 # Runtime state and IPC
 tools/telemetry_state.json*
 tools/mcp_command.txt
+tools/daemon.log
+tools/daemon_err.log
+
+# Proprietary Game Binaries & Telemetry Server (Khong commit len GitHub de tranh ban quyen)
+API-ETS2/
+*.exe
+*.dll
+
+# Temporary test dumps & scratch files
+scratch/
+test_*.txt
+test_out.txt
+shm_dump.bin

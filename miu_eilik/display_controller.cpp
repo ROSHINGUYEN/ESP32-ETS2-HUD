@@ -206,11 +206,11 @@ void DisplayManager::drawBootLogo(const char* name, int durationMs) {
     if (percent < 20) {
       oled.print(F("> KHOI DONG RTOS"));
     } else if (percent < 45) {
-      oled.print(F("> CAN CHINH SERVO"));
+      oled.print(F("> NAP USB PROTOCOL"));
     } else if (percent < 70) {
-      oled.print(F("> PHAT WIFI ROSHI"));
+      oled.print(F("> KET NOI ROBOT"));
     } else if (percent < 90) {
-      oled.print(F("> WEB UI CAPTIVE"));
+      oled.print(F("> ETS2 TELEMETRY"));
     } else {
       oled.print(F("> SAN SANG CHOI!"));
     }
@@ -509,10 +509,6 @@ void DisplayManager::triggerEts2Splash() {
   ets2SplashUntilMs = millis() + 3000;
 }
 
-void DisplayManager::triggerFs25Splash() {
-  fs25SplashUntilMs = millis() + 2000;
-}
-
 void DisplayManager::drawEts2SplashScreen() {
   unsigned long now = millis();
   unsigned long remain = (ets2SplashUntilMs > now) ? (ets2SplashUntilMs - now) : 0;
@@ -548,49 +544,6 @@ void DisplayManager::drawEts2SplashScreen() {
   // Thanh tien trinh loading
   oled.drawRect(16, 50, 96, 6, SSD1306_WHITE);
   int w = map(constrain(elapsed, 0, 3000), 0, 3000, 0, 92);
-  if (w > 0) {
-    oled.fillRect(18, 52, w, 2, SSD1306_WHITE);
-  }
-
-  oled.display();
-}
-
-void DisplayManager::drawFs25SplashScreen() {
-  unsigned long now = millis();
-  unsigned long remain = (fs25SplashUntilMs > now) ? (fs25SplashUntilMs - now) : 0;
-  unsigned long elapsed = 2000 - remain;
-
-  oled.clearDisplay();
-  oled.setTextColor(SSD1306_WHITE);
-
-  // Khung vien ngoai
-  oled.drawRoundRect(2, 2, 124, 60, 3, SSD1306_WHITE);
-
-  // Ten game FS25
-  oled.setTextSize(1);
-  oled.setCursor(8, 6);
-  oled.print(F("FARMING SIMULATOR 25"));
-  oled.drawFastHLine(6, 16, 116, SSD1306_WHITE);
-
-  // Do hoa Pixel Art may cay FS25 o giua
-  int16_t fx = 42;
-  int16_t fy = 19;
-  oled.drawRect(fx + 4, fy, 16, 13, SSD1306_WHITE);
-  oled.drawFastHLine(fx + 2, fy, 20, SSD1306_WHITE);
-  oled.fillRect(fx + 20, fy + 6, 18, 7, SSD1306_WHITE);
-  oled.drawFastVLine(fx + 26, fy + 1, 5, SSD1306_WHITE);
-  oled.fillRect(fx + 37, fy + 8, 2, 2, SSD1306_WHITE);
-  oled.fillCircle(fx + 10, fy + 15, 6, SSD1306_WHITE);
-  oled.drawCircle(fx + 10, fy + 15, 3, SSD1306_BLACK);
-  oled.fillCircle(fx + 30, fy + 16, 3, SSD1306_WHITE);
-
-  // Hang phat trien GIANTS Software
-  oled.setCursor(20, 40);
-  oled.print(F("GIANTS SOFTWARE"));
-
-  // Thanh tien trinh loading
-  oled.drawRect(16, 50, 96, 6, SSD1306_WHITE);
-  int w = map(constrain(elapsed, 0, 2000), 0, 2000, 0, 92);
   if (w > 0) {
     oled.fillRect(18, 52, w, 2, SSD1306_WHITE);
   }
@@ -726,93 +679,94 @@ void DisplayManager::drawGameDashboard() {
   oled.setTextColor(SSD1306_WHITE);
 
   // =========================================================================
-  // EURO TRUCK COCKPIT DASHBOARD (128 x 64 OLED)
+  // EURO TRUCK COCKPIT DASHBOARD (128 x 64 OLED) - THIET KE CAN DOI, RO NET
   // =========================================================================
 
   // 1. TOP HEADER (y = 0..11)
   // Xi-nhan trai (Left Blinker):
   if (gameTelem.blinkerL) {
     if ((now / 350) % 2 == 0) {
-      oled.fillTriangle(6, 1, 1, 5, 6, 9, SSD1306_WHITE);
+      oled.fillTriangle(7, 1, 1, 5, 7, 9, SSD1306_WHITE);
     } else {
-      oled.drawTriangle(6, 1, 1, 5, 6, 9, SSD1306_WHITE);
+      oled.drawTriangle(7, 1, 1, 5, 7, 9, SSD1306_WHITE);
     }
   }
 
-  // Den pha/cos xe tai:
+  // Den pha / cos:
   oled.setTextSize(1);
   if (gameTelem.lightsBeamHigh) {
-    oled.setCursor(9, 2);
-    oled.print(F("D+"));
+    oled.setCursor(10, 2);
+    oled.print(F("HI"));
   } else if (gameTelem.lightsBeamLow) {
-    oled.setCursor(9, 2);
+    oled.setCursor(10, 2);
     oled.print(F("D"));
   }
 
-  // Badges trang thai buong lai Euro Truck:
+  // Gạt nước kính (Wipers):
   if (gameTelem.wipers) {
     oled.setCursor(24, 2);
     oled.print(F("WIP"));
   }
-  if (gameTelem.beacon && ((now / 300) % 2 == 0)) {
-    oled.setCursor(44, 2);
-    oled.print(F("BCN"));
-  } else if (gameTelem.retarder > 0) {
-    oled.setCursor(44, 2);
-    oled.printf("R%d", gameTelem.retarder);
-  }
 
-  // Dong ho gio tren xe tai / Cự ly den dich giao hang (In-Game Clock & Destination ETA):
+  // Dong ho gio cabin xe (Co dinh chinh giua x=49, khong bao gio bi de chu):
   int dispH = (gameTelem.gameHour >= 0) ? gameTelem.gameHour : clockHour;
   int dispM = (gameTelem.gameMin >= 0) ? gameTelem.gameMin : clockMin;
-  bool showEta = (gameTelem.etaDistanceKm > 0);
+  bool blinkColon = ((now / 500) % 2 == 0);
+  oled.setCursor(49, 2);
+  oled.printf("%02d%c%02d", dispH, blinkColon ? ':' : ' ', dispM);
 
-  if (showEta && ((now / 2500) % 2 == 1)) {
-    // Icon cờ đích đến (Destination Flag)
-    oled.drawFastVLine(56, 2, 8, SSD1306_WHITE);
-    oled.fillRect(57, 2, 5, 4, SSD1306_WHITE);
-    oled.setCursor(64, 2);
-    oled.printf("%dkm", gameTelem.etaDistanceKm);
-  } else {
-    // Dong ho gio dien tu tren cabin xe
-    oled.setCursor(56, 2);
-    bool blinkColon = ((now / 500) % 2 == 0);
-    oled.printf("%02d%c%02d", dispH, blinkColon ? ':' : ' ', dispM);
+  // Retarder hoac Beacon:
+  if (gameTelem.retarder > 0) {
+    oled.setCursor(83, 2);
+    oled.printf("R%d", gameTelem.retarder);
+  } else if (gameTelem.beacon && ((now / 300) % 2 == 0)) {
+    oled.setCursor(83, 2);
+    oled.print(F("BCN"));
   }
 
   // Cruise Control badge o header:
   if (gameTelem.cruiseOn) {
-    oled.setCursor(98, 2);
+    oled.setCursor(103, 2);
     oled.print(F("CC"));
   }
 
   // Xi-nhan phai (Right Blinker):
   if (gameTelem.blinkerR) {
     if ((now / 350) % 2 == 0) {
-      oled.fillTriangle(121, 1, 126, 5, 121, 9, SSD1306_WHITE);
+      oled.fillTriangle(120, 1, 126, 5, 120, 9, SSD1306_WHITE);
     } else {
-      oled.drawTriangle(121, 1, 126, 5, 121, 9, SSD1306_WHITE);
+      oled.drawTriangle(120, 1, 126, 5, 120, 9, SSD1306_WHITE);
     }
   }
   oled.drawFastHLine(0, 11, 128, SSD1306_WHITE);
 
-  // 2. VUNG TRUNG TAM (y = 12..45)
-  // --- Cot trai: Bien bao tron gioi han toc do Chau Au & Ga tu dong ---
-  int cx = 14, cy = 22, r = 9;
+  // 2. VUNG TRUNG TAM (y = 12..44) - 3 COT RO RANG, CAN DOI
+  // --- COT TRAI (x = 0..30): Bien bao gioi han toc do & Ga tu dong ---
+  int cx = 15, cy = 23, r = 10;
   bool speeding = (gameTelem.speedLimit > 0 && gameTelem.speed > gameTelem.speedLimit);
   if (gameTelem.speedLimit > 0) {
     if (speeding && ((now / 220) % 2 == 0)) {
-      // Canh bao qua toc do: Chop dao mau (vong tron dac trang, chu den)
+      // Canh bao qua toc do: Vong tron dac trang, chu den
       oled.fillCircle(cx, cy, r, SSD1306_WHITE);
       oled.setTextColor(SSD1306_BLACK);
-      oled.setCursor(cx - 5, cy - 3);
-      oled.printf("%2d", gameTelem.speedLimit);
+      if (gameTelem.speedLimit >= 100) {
+        oled.setCursor(cx - 8, cy - 3);
+        oled.printf("%3d", gameTelem.speedLimit);
+      } else {
+        oled.setCursor(cx - 5, cy - 3);
+        oled.printf("%2d", gameTelem.speedLimit);
+      }
       oled.setTextColor(SSD1306_WHITE);
     } else {
       oled.drawCircle(cx, cy, r, SSD1306_WHITE);
       oled.drawCircle(cx, cy, r - 1, SSD1306_WHITE);
-      oled.setCursor(cx - 5, cy - 3);
-      oled.printf("%2d", gameTelem.speedLimit);
+      if (gameTelem.speedLimit >= 100) {
+        oled.setCursor(cx - 8, cy - 3);
+        oled.printf("%3d", gameTelem.speedLimit);
+      } else {
+        oled.setCursor(cx - 5, cy - 3);
+        oled.printf("%2d", gameTelem.speedLimit);
+      }
     }
   } else {
     oled.drawCircle(cx, cy, r, SSD1306_WHITE);
@@ -820,61 +774,69 @@ void DisplayManager::drawGameDashboard() {
     oled.print(F("--"));
   }
 
-  // Cruise control ben duoi bien bao toc do (y = 34):
-  oled.setCursor(1, 34);
+  // Toc do Cruise Control cai dat (dat ngay duoi bien bao, y=36):
+  oled.setCursor(1, 36);
   if (gameTelem.cruiseOn && gameTelem.cruiseSpeed > 0) {
     oled.printf("C:%2d", gameTelem.cruiseSpeed);
   } else {
     oled.print(F("C:--"));
   }
 
-  // --- Trung tam: Dong ho toc do dien tu lon (Digital Speedometer) ---
+  // --- COT GIUA (x = 32..94): Dong ho toc do dien tu lon (Digital Speedometer) ---
   int spd = constrain(gameTelem.speed, 0, 199);
   oled.setTextSize(3);
-  int xSpd = (spd < 10) ? 58 : ((spd < 100) ? 46 : 34);
+  int xSpd = (spd < 10) ? 55 : ((spd < 100) ? 46 : 37);
   oled.setCursor(xSpd, 13);
   oled.print(spd);
 
   oled.setTextSize(1);
-  // Khung trang tri hai ben chu km/h tao diem nhan dong ho taplo (y = 36)
-  oled.drawFastHLine(34, 39, 13, SSD1306_WHITE);
-  oled.setCursor(51, 36);
+  // Khung trang tri hai ben chu km/h tao diem nhan the thao (y = 37):
+  oled.drawFastHLine(34, 40, 15, SSD1306_WHITE);
+  oled.setCursor(53, 37);
   oled.print(F("km/h"));
-  oled.drawFastHLine(79, 39, 13, SSD1306_WHITE);
+  oled.drawFastHLine(80, 40, 15, SSD1306_WHITE);
 
-  // --- Cot phai: Hop so xe tai Chau Au (TraXon / Scania Opticruise) (y = 12..30) ---
-  oled.drawRoundRect(96, 12, 31, 19, 2, SSD1306_WHITE);
-  oled.setTextSize(2);
+  // --- COT PHAI (x = 96..127): Hop so xe tai Chau Au & Phanh ---
+  oled.drawRoundRect(96, 12, 31, 21, 2, SSD1306_WHITE);
+
   if (gameTelem.gear > 0) {
+    // Nhan che do Drive nho tren goc trai
+    oled.setTextSize(1);
+    oled.setCursor(99, 14);
+    oled.print(F("D"));
+
+    // Cap so lon hien thi chinh giua can doi
+    oled.setTextSize(2);
     if (gameTelem.gear >= 10) {
-      oled.setTextSize(1);
-      oled.setCursor(98, 18);
-      oled.print(F("D"));
-      oled.setTextSize(2);
-      oled.setCursor(104, 15);
+      oled.setCursor(105, 15);
       oled.printf("%2d", gameTelem.gear);
     } else {
-      oled.setCursor(100, 15);
-      oled.printf("D%d", gameTelem.gear);
+      oled.setCursor(110, 15);
+      oled.printf("%d", gameTelem.gear);
     }
   } else if (gameTelem.gear == 0) {
-    oled.setCursor(106, 15);
+    oled.setTextSize(2);
+    oled.setCursor(107, 15);
     oled.print(F("N"));
   } else {
     int rGear = abs(gameTelem.gear);
-    if (rGear == 1) {
-      oled.setCursor(106, 15);
-      oled.print(F("R"));
+    oled.setTextSize(1);
+    oled.setCursor(99, 14);
+    oled.print(F("R"));
+    oled.setTextSize(2);
+    if (rGear > 1) {
+      oled.setCursor(110, 15);
+      oled.printf("%d", rGear);
     } else {
-      oled.setCursor(100, 15);
-      oled.printf("R%d", rGear);
+      oled.setCursor(107, 15);
+      oled.print(F("R"));
     }
   }
 
-  // Chi bao phanh tay / Phanh dong co duoi hop so (y = 33..43):
+  // Chi bao phanh tay / Phanh dong co duoi hop so (y = 35..43):
   oled.setTextSize(1);
   if (gameTelem.parkBrake) {
-    oled.fillRoundRect(96, 33, 14, 11, 2, SSD1306_WHITE);
+    oled.fillRoundRect(96, 34, 14, 10, 2, SSD1306_WHITE);
     oled.setTextColor(SSD1306_BLACK);
     oled.setCursor(101, 35);
     oled.print(F("P"));
@@ -888,54 +850,48 @@ void DisplayManager::drawGameDashboard() {
     oled.print(F("!A"));
   }
 
-  // 3. VUNG DAY (y = 46..63) - DONG HO XANG, RPM VA STATUS TICKER TOAN DIEN
-  oled.drawFastHLine(0, 46, 128, SSD1306_WHITE);
+  // 3. VUNG DAY (y = 45..63) - 2 HANG RO RANG, CAN DOI
+  oled.drawFastHLine(0, 45, 128, SSD1306_WHITE);
 
-  // DONG 1 (y = 48..54): Thanh bao nhien lieu & Thanh bao vong tua RPM
-  // Thanh bao nhien lieu Diesel (x = 1..58):
+  // HANG 1 (y = 47..53): Thanh bao nhien lieu (F) & Thanh bao vong tua (RPM)
   oled.setTextSize(1);
-  oled.setCursor(1, 48);
+  oled.setCursor(1, 47);
   if (gameTelem.fuelWarning && ((now / 300) % 2 == 0)) {
     oled.print(F("F!"));
   } else {
     oled.print(F("F:"));
   }
-  oled.drawRect(13, 48, 25, 5, SSD1306_WHITE);
-  int fWidth = constrain(gameTelem.fuelPct * 21 / 100, 0, 21);
-  if (fWidth > 0) oled.fillRect(15, 49, fWidth, 3, SSD1306_WHITE);
-  oled.setCursor(41, 48);
+  oled.drawRect(13, 47, 24, 6, SSD1306_WHITE);
+  int fWidth = constrain(gameTelem.fuelPct * 20 / 100, 0, 20);
+  if (fWidth > 0) oled.fillRect(15, 49, fWidth, 2, SSD1306_WHITE);
+  oled.setCursor(39, 47);
   oled.printf("%2d%%", gameTelem.fuelPct);
 
-  // Thanh bao vong tua RPM voi dai kinh te (Economic Green Band 1000-1500 RPM) (x = 66..127):
-  oled.setCursor(67, 48);
+  // Thanh RPM voi vach dai mo-men xoan kinh te Euro Truck (1000 - 1500 RPM)
+  oled.setCursor(67, 47);
   oled.print(F("R:"));
-  oled.drawRect(79, 48, 48, 5, SSD1306_WHITE);
-  // Vach danh dau dai mo-men xoan kinh te Euro Truck (1000 - 1500 RPM tai x=95 va x=105)
+  oled.drawRect(79, 47, 48, 6, SSD1306_WHITE);
   oled.drawFastVLine(95, 46, 2, SSD1306_WHITE);
   oled.drawFastVLine(105, 46, 2, SSD1306_WHITE);
-  oled.drawFastVLine(95, 53, 2, SSD1306_WHITE);
-  oled.drawFastVLine(105, 53, 2, SSD1306_WHITE);
 
   float maxR = (gameTelem.rpmMax > 500.0f) ? gameTelem.rpmMax : 2500.0f;
   int rWidth = constrain((int)(gameTelem.rpm / maxR * 44.0f), 0, 44);
-  if (rWidth > 0) oled.fillRect(81, 49, rWidth, 3, SSD1306_WHITE);
+  if (rWidth > 0) oled.fillRect(81, 49, rWidth, 2, SSD1306_WHITE);
 
-  // DONG 2 (y = 56..63): STATUS TICKER (DO BEN XE, DO BEN HANG HOA, XANG LIT, ODO/ETA)
-  // [1] DO BEN XE (TRUCK DAMAGE / WEAR %):
+  // HANG 2 (y = 56..63): 4 THONG SO STATUS TICKER CAN DOI (32px moi cot)
+  // [Cot 1 - x = 1]: Do ben xe (Truck Wear %)
   oled.setCursor(1, 56);
   if (gameTelem.truckWearPct >= 10 && ((now / 300) % 2 == 0)) {
-    // Nhap nhay canh bao khi xe bi hong nang
     oled.printf("T!%d%%", gameTelem.truckWearPct);
   } else {
     oled.printf("T:%d%%", gameTelem.truckWearPct);
   }
 
-  // [2] DO BEN HANG HOA / RO-MOOC (CARGO DAMAGE / WEAR %):
-  oled.setCursor(32, 56);
+  // [Cot 2 - x = 33]: Do ben hang hoa / ro-mooc (Cargo Wear %)
+  oled.setCursor(33, 56);
   if (gameTelem.trailerAttached) {
     int cWear = (gameTelem.cargoWearPct >= 0) ? gameTelem.cargoWearPct : 0;
     if (cWear > 0 && ((now / 350) % 2 == 0)) {
-      // Nhap nhay canh bao khi hang hoa bi hu hai
       oled.printf("C!%d%%", cWear);
     } else {
       oled.printf("C:%d%%", cWear);
@@ -944,24 +900,24 @@ void DisplayManager::drawGameDashboard() {
     oled.print(F("C:--"));
   }
 
-  // [3] SO LIT XANG THUC TE (REAL FUEL LITERS):
-  oled.setCursor(62, 56);
+  // [Cot 3 - x = 66]: Luong dau thuc te (Liters)
+  oled.setCursor(66, 56);
   if (gameTelem.fuelLiters > 0) {
     oled.printf("%dL", gameTelem.fuelLiters);
   } else {
     oled.printf("%d%%", gameTelem.fuelPct);
   }
 
-  // [4] CU LY DEN DICH GIAO HANG HOAC ODOMETER (ETA / ODO KM):
-  oled.setCursor(93, 56);
+  // [Cot 4 - x = 97]: Cu ly dich den (ETA) hoac Odometer
+  oled.setCursor(97, 56);
   if (gameTelem.etaDistanceKm > 0) {
-    oled.printf("%dkm", gameTelem.etaDistanceKm);
-  } else if (gameTelem.odometerKm > 0) {
-    if (gameTelem.odometerKm >= 10000) {
-      oled.printf("%dk", gameTelem.odometerKm / 1000);
+    if (gameTelem.etaDistanceKm >= 1000) {
+      oled.printf("%d.%dk", gameTelem.etaDistanceKm / 1000, (gameTelem.etaDistanceKm % 1000) / 100);
     } else {
-      oled.printf("%d", gameTelem.odometerKm);
+      oled.printf("%dkm", gameTelem.etaDistanceKm);
     }
+  } else if (gameTelem.odometerKm > 0) {
+    oled.printf("%dk", (gameTelem.odometerKm / 1000));
   } else {
     oled.print(F("ETS2"));
   }
@@ -970,147 +926,12 @@ void DisplayManager::drawGameDashboard() {
   if (now < gameTelem.eventUntilMs && strlen(gameTelem.eventText) > 0) {
     drawEventToast();
   } else if (gameTelem.paused) {
-    // Neu dang Pause trong game:
     oled.fillRoundRect(28, 20, 72, 20, 3, SSD1306_BLACK);
     oled.drawRoundRect(28, 20, 72, 20, 3, SSD1306_WHITE);
     oled.drawRoundRect(30, 22, 68, 16, 2, SSD1306_WHITE);
     oled.setTextSize(2);
     oled.setCursor(33, 23);
     oled.print(F("PAUSED"));
-  }
-
-  oled.display();
-}
-
-void DisplayManager::updateFs25Telemetry(const Fs25TelemetryData& data) {
-  bool firstConnect = (fs25LastPacketMs == 0 || mode != DISP_FS25);
-  fs25Telem = data;
-  fs25LastPacketMs = millis();
-  notifyPresence();
-
-  if (firstConnect) {
-    mode = DISP_FS25;
-    triggerFs25Splash();
-    LOG_PRINTLN(F("[DISPLAY] Da bat HUD Farming Simulator 25 (Kem Splash Intro)!"));
-  }
-}
-
-void DisplayManager::drawFs25Dashboard() {
-  unsigned long now = millis();
-  if (now < fs25SplashUntilMs) {
-    drawFs25SplashScreen();
-    return;
-  }
-
-  bool isTimedOut = (fs25LastPacketMs == 0 || (now - fs25LastPacketMs > 6000));
-  if (isTimedOut) {
-    mode = DISP_EYES;
-    return;
-  }
-
-  oled.clearDisplay();
-  oled.setTextColor(SSD1306_WHITE);
-
-  bool blinkPhase = ((now / 350) % 2 == 0);
-
-  // 1. Header (Y: 0..10)
-  oled.setTextSize(1);
-  oled.setCursor(0, 1);
-  oled.print(F("FS25"));
-
-  // Xi-nhan trai
-  if (fs25Telem.blinkerL && blinkPhase) {
-    oled.setCursor(28, 1);
-    oled.print(F("<<"));
-  }
-
-  // Den chop xoay [BCN]
-  if (fs25Telem.beacon) {
-    oled.setCursor(44, 1);
-    if (blinkPhase) {
-      oled.print(F("[BCN]"));
-    } else {
-      oled.print(F(" BCN "));
-    }
-  }
-
-  // Den lam viec [WRK]
-  if (fs25Telem.workLight) {
-    oled.setCursor(76, 1);
-    oled.print(F("[WRK]"));
-  }
-
-  // Xi-nhan phai
-  if (fs25Telem.blinkerR && blinkPhase) {
-    oled.setCursor(106, 1);
-    oled.print(F(">>"));
-  }
-
-  // Duong ke ngang phan cach header
-  oled.drawFastHLine(0, 11, 128, SSD1306_WHITE);
-
-  // 2. Khu vuc trung tam: Toc do so lon (X: 0..58, Y: 14..40)
-  oled.setTextSize(3);
-  oled.setCursor(4, 15);
-  int spd = constrain(fs25Telem.speed, 0, 999);
-  if (spd < 10) oled.print(F(" "));
-  oled.print(spd);
-
-  oled.setTextSize(1);
-  oled.setCursor(44, 29);
-  oled.print(F("KM"));
-  oled.setCursor(44, 37);
-  oled.print(F("/H"));
-
-  // 3. Ben phai (X: 66..127): Danh sach trang thai chuc nang nong cu
-  // Hang 1 (Y=14): May moc [PTO:ON] / [PTO:OFF]
-  oled.setCursor(68, 14);
-  if (fs25Telem.implementTurnedOn) {
-    oled.print(F("[PTO:ON]"));
-  } else {
-    oled.print(F(" PTO:OFF"));
-  }
-
-  // Hang 2 (Y=24): Dan cay/nong cu [DOWN] / [UP]
-  oled.setCursor(68, 24);
-  if (fs25Telem.implementLowered) {
-    oled.print(F("[DOWN v]"));
-  } else {
-    oled.print(F(" TOOL:^ "));
-  }
-
-  // Hang 3 (Y=34): Ong xa [PIPE] hoac Thung chua %
-  oled.setCursor(68, 34);
-  if (fs25Telem.pipeUnfolded) {
-    oled.print(F("[PIPE->]"));
-  } else {
-    oled.printf("FIL:%d%%", constrain(fs25Telem.fillLevelPct, 0, 100));
-  }
-
-  // 4. Thanh Toc Do (Speed Bar) (Y: 44..50)
-  int maxSpd = (fs25Telem.maxSpeed > 0) ? fs25Telem.maxSpeed : 50;
-  int barW = map(constrain(spd, 0, maxSpd), 0, maxSpd, 0, 124);
-  oled.drawRect(0, 44, 128, 7, SSD1306_WHITE);
-  if (barW > 0) {
-    oled.fillRect(2, 46, barW, 3, SSD1306_WHITE);
-  }
-
-  // 5. Hang thong tin day (Y: 54..63)
-  oled.setCursor(0, 54);
-  if (fs25Telem.cruiseOn) {
-    oled.printf("CRU:%d", fs25Telem.cruiseSpeed);
-  } else {
-    oled.print(F("CRU:--"));
-  }
-
-  oled.setCursor(50, 54);
-  oled.printf("OIL:%d%%", constrain(fs25Telem.fuelPct, 0, 100));
-
-  oled.setCursor(94, 54);
-  if (fs25Telem.operatingHours > 0.0f) {
-    oled.printf("%.1fh", fs25Telem.operatingHours);
-  } else {
-    oled.printf("D:%d%%", constrain(fs25Telem.damagePct, 0, 100));
   }
 
   oled.display();
@@ -1135,9 +956,6 @@ void DisplayManager::update() {
   if (mode == DISP_GAME && !gameModeLocked && (gameLastPacketMs > 0) && (now - gameLastPacketMs > 10000)) {
     mode = DISP_EYES; // Tu dong tra ve robot de ban khi ngung choi game qua 10s
   }
-  if (mode == DISP_FS25 && !gameModeLocked && (fs25LastPacketMs > 0) && (now - fs25LastPacketMs > 10000)) {
-    mode = DISP_EYES; // Tu dong tra ve robot de ban khi ngung choi FS25 qua 10s
-  }
 
   switch (mode) {
     case DISP_CLOCK:  drawClock(); break;
@@ -1145,7 +963,6 @@ void DisplayManager::update() {
     case DISP_VISUAL: drawVisual(); break;
     case DISP_STREAM: drawStream(); break;
     case DISP_GAME:   drawGameDashboard(); break;
-    case DISP_FS25:   drawFs25Dashboard(); break;
   }
 }
 
@@ -1156,7 +973,6 @@ const char* DisplayManager::modeStr() const {
     case DISP_VISUAL: return PSTR("VISUAL");
     case DISP_STREAM: return PSTR("STREAM");
     case DISP_GAME:   return PSTR("GAME");
-    case DISP_FS25:   return PSTR("FS25");
   }
   return PSTR("?");
 }

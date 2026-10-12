@@ -132,11 +132,6 @@ void processSerialLine(String line) {
     display.gameModeLocked = true;
     display.triggerEts2Splash();
     LOG_PRINTLN(F("[MODE] Da chuyen sang ETS2 Game Dashboard (Khoa che do + Splash Intro)"));
-  } else if (line == "MODE=FS25" || line == "mode=fs25" || line == "fs25") {
-    display.mode = DISP_FS25;
-    display.gameModeLocked = true;
-    display.triggerFs25Splash();
-    LOG_PRINTLN(F("[MODE] Da chuyen sang Farming Simulator 25 Dashboard (Khoa che do + Splash Intro)"));
   } else if (line == "MODE=EYES" || line == "mode=eyes" || line == "eyes") {
     display.mode = DISP_EYES;
     display.gameModeLocked = false;
@@ -145,8 +140,8 @@ void processSerialLine(String line) {
     display.mode = DISP_CLOCK;
     display.gameModeLocked = false;
     LOG_PRINTLN(F("[MODE] Da chuyen sang Clock"));
-  } else if (line.startsWith("FS25=") || line.startsWith("FS25:") || line.startsWith("ETS2=") || line.startsWith("ETS2:") ||
-             (line.indexOf('{') >= 0 && (line.indexOf("\"game\"") >= 0 || line.indexOf("\"spd\"") >= 0 || line.indexOf("\"fs25\"") >= 0 || line.indexOf("\"gear\"") >= 0))) {
+  } else if (line.startsWith("ETS2=") || line.startsWith("ETS2:") ||
+             (line.indexOf('{') >= 0 && (line.indexOf("\"game\"") >= 0 || line.indexOf("\"spd\"") >= 0 || line.indexOf("\"gear\"") >= 0))) {
     int startIdx = line.indexOf('{');
     if (startIdx >= 0) {
       String jsonStr = line.substring(startIdx);
@@ -190,7 +185,7 @@ void setup() {
 
   LOG_PRINTLN(F("\n====================================================="));
   LOG_PRINTLN(F(" MIU EILIK - TAIBAI EMOJI HARDWARE ARCHITECTURE       "));
-  LOG_PRINTLN(F(" OLED Dashboard (ETS2 + FS25) | Dual-core FreeRTOS   "));
+  LOG_PRINTLN(F(" OLED ETS2 Dashboard | Dual-core FreeRTOS            "));
   LOG_PRINTLN(F("====================================================="));
 
   gStateMutex = xSemaphoreCreateMutex();
@@ -203,8 +198,8 @@ void setup() {
   oled.setTextColor(SSD1306_WHITE);
   oled.setCursor(20, 15);
   oled.print(F("MIU EILIK READY"));
-  oled.setCursor(16, 32);
-  oled.print(F("ETS2 & FS25 DASH"));
+  oled.setCursor(24, 32);
+  oled.print(F("ETS2 COCKPIT"));
   oled.setCursor(24, 46);
   oled.print(F("DESKTOP COMPANION"));
   oled.display();
@@ -217,7 +212,7 @@ void setup() {
   ets2Wifi.begin();
 #endif
 
-  xTaskCreatePinnedToCore(taskUsb,     "USB",     4096, NULL, 4, NULL, 0);
+  xTaskCreatePinnedToCore(taskUsb,     "USB",     6144, NULL, 4, NULL, 0);
   xTaskCreatePinnedToCore(taskDisplay, "Display", 6144, NULL, 4, NULL, 1);
   xTaskCreatePinnedToCore(taskBrain,   "Brain",   4096, NULL, 3, NULL, 1);
 

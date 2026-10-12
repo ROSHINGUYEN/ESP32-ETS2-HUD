@@ -1,0 +1,58 @@
+{
+  "game": {
+    "connected": true,
+    "paused": false,
+    "time": "0001-01-08T14:30:00Z",
+    "timeScale": 19.0,
+    "nextRestStopTime": "0001-01-01T10:11:00Z",
+    "version": "1.50",
+    "telemetryPluginVersion": "12"
+  },
+  "truck": {
+    "id": "scania_s_2016",
+    "make": "Scania",
+    "model": "S 2016",
+    "speed": 65.4,
+    "cruiseControlSpeed": 70.0,
+    "cruiseControlOn": true,
+    "odometer": 105830.45,
+    "gear": 9,
+    "displayedGear": 9,
+    "forwardGears": 12,
+    "reverseGears": 2,
+    "shifterType": "automatic",
+    "engineRpm": 1250.0,
+    "engineRpmMax": 2500.0,
+    "fuel": 560.0,
+    "fuelCapacity": 700.0,
+    "fuelAverageConsumption": 0.32,
+    "fuelWarningFactor": 0.15,
+    "fuelWarningOn": false,
+    "wearEngine": 0.05,
+    "wearTransmission": 0.04,
+    "wearCabin": 0.03,
+    "wearChassis": 0.04,
+    "wearWheels": 0.06,
+    "engineOn": true,
+    "electricOn": true,
+    "wipersOn": false,
+    "retarderBrake": 0,
+    "parkBrakeOn": false,
+    "motorBrakeOn": false,
+    "blinkerLeftActive": false,
+    "blinkerRightActive": false,
+    "lightsBeamLowOn": true,
+    "lightsBeamHighOn": false,
+    "lightsBeaconOn": false,
+    "airPressureWarningOn": false
+  },
+  "trailer": {
+    "attached": true,
+    "wear": 0.02
+  },
+  "navigation": {
+    "estimatedDistance": 185000.0,
+    "estimatedTime": 9600.0,
+    "speedLimit": 80.0
+  }
+}

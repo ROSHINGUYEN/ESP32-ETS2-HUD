@@ -71,7 +71,7 @@ void UsbLink::processJson(const char* json, size_t len) {
   // 1. Uu tien tuyet doi: Kiem tra neu la goi du lieu telemetry game ETS2 / ATS tu Desktop Miu
   if (doc["game"] == "ets2" || doc.containsKey("spd") || doc.containsKey("gear") || doc.containsKey("truck")) {
     Ets2TelemetryData t;
-    t.connected = doc.containsKey("conn") ? (doc["conn"].as<int>() != 0) : true;
+    t.connected = doc.containsKey("conn") ? (doc["conn"].as<int>() != 0) : false;
     t.paused = doc.containsKey("pause") ? (doc["pause"].as<int>() != 0) : false;
     t.speed = doc["spd"] | 0;
     t.speedLimit = doc["lim"] | 0;
@@ -115,33 +115,6 @@ void UsbLink::processJson(const char* json, size_t len) {
     return;
   }
 
-  // 2. Kiem tra neu la goi du lieu telemetry Farming Simulator 25
-  if (doc["game"] == "fs25" || doc.containsKey("fs25") || doc.containsKey("pto") || doc.containsKey("pipe") || doc.containsKey("maxSpd")) {
-    JsonObject d = doc.containsKey("fs25") ? doc["fs25"].as<JsonObject>() : doc.as<JsonObject>();
-    Fs25TelemetryData data;
-    data.connected = true;
-    data.speed = d["speed"] | 0;
-    data.maxSpeed = d["maxSpd"] | 50;
-    data.rpm = d["rpm"] | 0;
-    data.rpmMax = d["rpmMax"] | 2200;
-    data.cruiseSpeed = d["cru"] | 0;
-    data.cruiseOn = d["cruOn"] | false;
-    data.fuelPct = d["fuel"] | 100;
-    data.fillLevelPct = d["fill"] | 0;
-    data.damagePct = d["dmg"] | 0;
-    data.operatingHours = d["hr"] | 0.0f;
-    data.beacon = d["bcn"] | false;
-    data.workLight = d["wrk"] | false;
-    data.blinkerL = d["turnL"] | false;
-    data.blinkerR = d["turnR"] | false;
-    data.implementLowered = d["down"] | false;
-    data.implementTurnedOn = d["pto"] | false;
-    data.pipeUnfolded = d["pipe"] | false;
-    data.motorRunning = d["motor"] | true;
-    display.updateFs25Telemetry(data);
-    return;
-  }
-
   for (auto kv : doc.as<JsonObject>()) {
     uint32_t k = hashKey(kv.key().c_str());
     switch (k) {
@@ -169,10 +142,6 @@ void UsbLink::processJson(const char* json, size_t len) {
             display.mode = DISP_GAME;
             display.gameModeLocked = true;
             display.triggerEts2Splash();
-          } else if (mVal == "FS25") {
-            display.mode = DISP_FS25;
-            display.gameModeLocked = true;
-            display.triggerFs25Splash();
           } else {
             display.gameModeLocked = false;
             uint32_t mh = hashKey(kv.value().as<const char*>());
@@ -206,7 +175,7 @@ void UsbLink::handle() {
   if (pktType == PKT_OLED_BITMAP && pktLen == 1024) {
     display.mode = DISP_STREAM;
     display.setStreamFrame(payload);
-  } else if ((pktType == PKT_CMD_JSON || pktType == PKT_GAME_TELEMETRY || pktType == PKT_FS25_TELEMETRY) && pktLen > 0 && pktLen < sizeof(payload)) {
+  } else if ((pktType == PKT_CMD_JSON || pktType == PKT_GAME_TELEMETRY) && pktLen > 0 && pktLen < sizeof(payload)) {
     payload[pktLen] = '\0';
     processJson((const char*)payload, pktLen);
   } else if (pktType == PKT_TELEMETRY_REQ) {

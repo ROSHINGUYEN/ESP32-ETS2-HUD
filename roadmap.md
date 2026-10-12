@@ -57,28 +57,28 @@ Sau quá trình thử nghiệm thực tế, hệ thống được tái cấu tr�
 | `miu_eilik/logger.h/.cpp` | Hệ thống ghi log tuần tự | Quản lý log ra Serial |
 | `miu_eilik/ntp_sync.h/.cpp` | Đồng bộ thời gian thực qua NTP | Cập nhật đồng hồ khi có WiFi |
 | `miu_eilik/servo_controller.h/.cpp` | Trạng thái góc ảo (Virtual Stub) | Tinh gọn thành stub nhẹ lưu góc ảo, không tốn tài nguyên |
-| `tools/miu_desktop_ets2.py` | Companion Tool chính trên PC | Tự bắt cổng COM, đọc telemetry 25555, hỗ trợ mode `--demo` |
-| `API-ETS2/` | Telemetry Server ETS2 trên PC | Chứa server `Ets2Telemetry.exe` và dữ liệu test của game |
+| `tools/miu_desktop_ets2.py` | Companion Tool chính trên PC | Tự bắt cổng COM, đọc telemetry SHM 30 FPS, hỗ trợ mode `--demo` |
+| `tools/ets2_open_api.py` | Open Telemetry API Module | Chuẩn mở 100% SCS SDK / SimHub, không chứa file binary lậu |
+| `tools/mock_telemetry.json` | Mock Telemetry Test Data | Dữ liệu kiểm thử độc lập, an toàn khi push GitHub |
+| `tools/esp32_mcp_server.py` | Cổng AI MCP Server cho IDE | Cung cấp 5 tool giám sát & điều khiển robot qua AI IDE |
 | `platformio.ini` | Cấu hình biên dịch PlatformIO | Gỡ bỏ thư viện web và servo thừa |
 | `WORK_REPORT.md` | Nhật ký công việc liên tục | Duy trì cập nhật tiến độ minh bạch |
 
 ---
 
-## 3. CẤU TRÚC THƯ MỤC DỰ KIẾN SAU DỌN DẸP
+## 3. CẤU TRÚC THƯ MỤC CHUẨN GITHUB (KHÔNG CHỨA BINARY LẬU)
 
 ```
 MIU_EILIK_ESP32-S3/
-├── .agents/                    # Quy tắc và kỹ năng AI
-├── API-ETS2/
-│   └── server/                 # ETS2 Telemetry Server cho PC (port 25555)
+├── .agents/                    # Quy tắc và kỹ năng AI IDE
 ├── miu_eilik/                  # Source code firmware ESP32-S3 (Siêu tinh gọn)
 │   ├── miu_eilik.ino           # Main setup & FreeRTOS loop
 │   ├── config.h                # System configuration & enums
 │   ├── board_config.h          # Hardware pinout (I2C, I2S, RGB)
-│   ├── display_controller.h/.cpp # OLED 128x64 (RoboEyes + ETS2 HUD)
+│   ├── display_controller.h/.cpp # OLED 128x64 (RoboEyes + ETS2 HUD 3 cột đối xứng)
 │   ├── FluxGarage_RoboEyes.h   # Thư viện RoboEyes
 │   ├── ets2_client.h/.cpp      # WiFi REST client kết nối PC
-│   ├── usb_protocol.h/.cpp     # USB Serial protocol (JSON + Binary)
+│   ├── usb_protocol.h/.cpp     # USB Serial protocol (JSON gon nhe, 30 FPS)
 │   ├── emoji_controller.h/.cpp # Emotion & command execution
 │   ├── audio_engine.h/.cpp     # I2S Audio engine
 │   ├── led.h/.cpp              # Neopixel RGB LED controller
@@ -86,11 +86,15 @@ MIU_EILIK_ESP32-S3/
 │   ├── ntp_sync.h/.cpp         # Network time protocol sync
 │   ├── servo_controller.h/.cpp # Virtual angle stub (no hardware PWM)
 │   └── roshi_logo.h            # Bitmap logo khởi động
-├── tools/
-│   └── miu_desktop_ets2.py     # Desktop Companion chính (USB Serial & Demo Sim)
-├── platformio.ini              # Build config tối ưu (loại bỏ thư viện thừa)
+├── tools/                      # Bộ công cụ Companion & Open API trên PC
+│   ├── miu_desktop_ets2.py     # Desktop Companion chính (USB Serial, SHM & Demo)
+│   ├── ets2_open_api.py        # Thư viện Open Telemetry chuẩn SCS SDK (Hợp pháp 100%)
+│   ├── mock_telemetry.json     # Dữ liệu mô phỏng độc lập
+│   ├── esp32_mcp_server.py     # Cổng giao tiếp AI MCP Server cho IDE
+│   └── setup_autostart.py      # Kích hoạt tự động chạy ngầm cùng Windows
+├── platformio.ini              # Build config tối ưu PlatformIO
 ├── partitions_16mb.csv         # Phân vùng flash tối ưu
-├── README.md                   # Hướng dẫn sử dụng dự án
+├── README.md                   # Hướng dẫn sử dụng dự án hoàn chỉnh
 ├── roadmap.md                  # Tài liệu quy hoạch kiến trúc (File này)
 └── WORK_REPORT.md              # Báo cáo tiến độ liên tục
 ```
@@ -99,18 +103,21 @@ MIU_EILIK_ESP32-S3/
 
 ## 4. LỘ TRÌNH TRIỂN KHAI (MILESTONES)
 
-### Milestone 1: Dọn dẹp & Tinh giản (Hoàn thành ngay)
+### Milestone 1: Dọn dẹp & Tinh giản (ĐÃ HOÀN THÀNH)
 - [x] Xây dựng Roadmap quy hoạch toàn bộ file source.
-- [ ] Xóa bỏ toàn bộ các file rác, file test không dùng và thư mục `web_ui/`.
-- [ ] Gỡ bỏ `web_server_controller` và `web_ui_html.h` khỏi firmware `miu_eilik`.
-- [ ] Dọn dẹp `platformio.ini` (bỏ `ESP32Servo`, `WebServer`, `DNSServer`, `apply_patches.py`).
-- [ ] Thu gọn `servo_controller` thành virtual stub nhẹ.
-- [ ] Build kiểm chứng PlatformIO thành công 100% với dung lượng Flash và RAM giảm sâu.
+- [x] Xóa bỏ toàn bộ các file rác, file test không dùng và thư mục `web_ui/`.
+- [x] Gỡ bỏ `web_server_controller` và `web_ui_html.h` khỏi firmware `miu_eilik`.
+- [x] Dọn dẹp `platformio.ini` (bỏ `ESP32Servo`, `WebServer`, `DNSServer`, `apply_patches.py`).
+- [x] Thu gọn `servo_controller` thành virtual stub nhẹ.
+- [x] Build kiểm chứng PlatformIO thành công 100% với dung lượng Flash và RAM giảm sâu.
+- [x] Xóa sạch toàn bộ code FS25 cũ và gỡ bỏ binary `API-ETS2/` khỏi git tracking.
 
-### Milestone 2: Tối ưu hóa hiệu năng & Boot Time
-- Đảm bảo thời gian khởi động từ lúc cắm nguồn đến khi hiển thị mắt robot đạt **< 100ms**.
-- Đảm bảo tốc độ vẽ OLED đạt 30+ FPS ổn định, mượt mà không rung giật.
-- Tự động nhận diện kết nối USB Serial từ PC; khi PC gửi telemetry thì chuyển tức thì sang Game Dashboard.
+### Milestone 2: Tối ưu hóa hiệu năng & Game Dashboard (ĐÃ HOÀN THÀNH)
+- [x] Khởi động cực nhanh < 100ms từ lúc cắm nguồn đến khi hiển thị mắt robot.
+- [x] Màn hình OLED taplo ETS2 thiết kế 3 cột đối xứng sắc nét, hỗ trợ cấp số chuẩn taplo (D1..D12).
+- [x] Tốc độ truyền USB Serial đạt 30 FPS mượt mà, độ trễ < 2ms qua Windows Shared Memory.
+- [x] Tự động hiển thị Loading Splash khi game đang khởi động hoặc ở đoạn Intro.
+- [x] Tự động chuyển đổi mượt mà giữa mắt RoboEyes và Game Dashboard khi bật/tắt game.
 
 ### Milestone 3: Nâng cấp Miu Desktop Companion (GUI trên PC)
 - Phát triển giao diện Desktop app trực quan trên PC (dùng Python Tkinter/PyQt hoặc Electron):

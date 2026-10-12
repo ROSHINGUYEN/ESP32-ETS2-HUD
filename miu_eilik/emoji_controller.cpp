@@ -212,7 +212,7 @@ void EmojiController::RandomAct() {
 
 void EmojiController::Update() {
     if (!auto_enabled_ || is_busy_) return;
-    if (display.mode == DISP_GAME || display.mode == DISP_FS25) return;
+    if (display.mode == DISP_GAME) return;
 
     if (millis() - last_act_time_ >= auto_interval_ms_) {
         last_act_time_ = millis();
@@ -276,11 +276,6 @@ void EmojiController::ExecuteCommand(String cmd) {
         display.gameModeLocked = true;
         display.triggerEts2Splash();
         Serial.println(F("[DISPLAY] Da chuyen sang ETS2 Game Dashboard (Kem Splash Intro)"));
-    } else if (cmd == "disp_fs25" || cmd == "fs25") {
-        display.mode = DISP_FS25;
-        display.gameModeLocked = true;
-        display.triggerFs25Splash();
-        Serial.println(F("[DISPLAY] Da chuyen sang Farming Simulator 25 Dashboard (Kem Splash Intro)"));
     } else if (cmd == "eye_center" || cmd == "center" || cmd == "head_center" || cmd == "look_center") {
         Center();
     } else if (cmd == "thinking") {
@@ -291,12 +286,10 @@ void EmojiController::ExecuteCommand(String cmd) {
         LOG_PRINTLN(F("====================================================="));
         LOG_PRINTLN(F(" 1. Che do Man hinh OLED:"));
         LOG_PRINTLN(F("    MODE=GAME / game       - Bat ETS2 Sim Dashboard"));
-        LOG_PRINTLN(F("    MODE=FS25 / fs25       - Bat Farming Simulator 25 HUD"));
         LOG_PRINTLN(F("    MODE=EYES / eyes       - Bat bieu cam Mat Robot"));
         LOG_PRINTLN(F("    MODE=CLOCK / clock     - Bat Dong ho gio & ngay"));
         LOG_PRINTLN(F(" 2. Telemetry Game:"));
         LOG_PRINTLN(F("    ETS2={...}             - Truyen du lieu ETS2"));
-        LOG_PRINTLN(F("    FS25={...}             - Truyen du lieu Farming Simulator 25"));
         LOG_PRINTLN(F("    ETS2? / ETS2IP=<IP>    - WiFi REST client"));
         LOG_PRINTLN(F(" 3. Bieu cam Mat (RoboEyes):"));
         LOG_PRINTLN(F("    eye_happy, eye_sad, eye_anger, eye_blink, eye_center"));

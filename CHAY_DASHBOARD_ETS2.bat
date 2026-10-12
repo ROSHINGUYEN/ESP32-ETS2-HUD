@@ -19,7 +19,7 @@ echo Nhan Ctrl+C de dung chuong trinh.
 echo ======================================================================
 echo.
 
-python "%~dp0tools\miu_desktop_ets2.py" --game ets2 %*
+python "%~dp0tools\miu_desktop_ets2.py" %*
 
 if %ERRORLEVEL% NEQ 0 (
     echo.

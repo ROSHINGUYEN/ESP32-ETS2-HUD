@@ -13,8 +13,24 @@ import argparse
 import threading
 import ctypes
 import struct
+import traceback
 from ctypes import wintypes
 from typing import Optional, Dict, Any
+
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
+def _global_exception_hook(ex_cls, ex_val, tb):
+    try:
+        crash_file = os.path.join(os.path.dirname(__file__), "crash.log")
+        with open(crash_file, "a", encoding="utf-8") as f:
+            f.write(f"\n--- CRASH AT {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+            traceback.print_exception(ex_cls, ex_val, tb, file=f)
+    except Exception:
+        pass
+
+sys.excepthook = _global_exception_hook
 
 class SafeStdoutWriter:
     def __init__(self, original, fallback_path=None):
@@ -51,6 +67,18 @@ class SafeStdoutWriter:
             except Exception:
                 pass
 
+    @property
+    def encoding(self):
+        return "utf-8"
+
+    def isatty(self):
+        return False
+
+    def fileno(self):
+        if self.fallback:
+            return self.fallback.fileno()
+        raise OSError("fileno not available")
+
 log_path = os.path.join(os.path.dirname(__file__), "daemon.log")
 sys.stdout = SafeStdoutWriter(sys.stdout, log_path)
 sys.stderr = SafeStdoutWriter(sys.stderr, log_path)
@@ -64,16 +92,22 @@ except ImportError:
 
 try:
     import requests
+    _REQUESTS_OK = True
 except ImportError:
-    print("[ERROR] Thieu thu vien requests. Cai dat bang: pip install requests")
-    sys.exit(1)
+    _REQUESTS_OK = False
+    print("[WARN] Khong co thu vien requests - chi dung Shared Memory (khong fallback HTTP)")
+
+try:
+    import psutil
+    _PSUTIL_OK = True
+except ImportError:
+    _PSUTIL_OK = False
 
 
 DEFAULT_BAUD = 115200
 DEFAULT_ETS2_URL = "http://127.0.0.1:25555/api/ets2/telemetry"
-DEFAULT_FS25_URL = "http://127.0.0.1:8080/api/fs25/telemetry"
 DEFAULT_TEST_JSON = os.path.join(
-    os.path.dirname(__file__), "..", "API-ETS2", "server", "Ets2TestTelemetry.json"
+    os.path.dirname(__file__), "mock_telemetry.json"
 )
 
 
@@ -90,24 +124,66 @@ class Ets2SharedMemoryReader:
         self.k32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
         self.hMap = None
         self.pBuf = None
+        self.hMapScs = None
+        self.pBufScs = None
+        self.ets2_pid: Optional[int] = None
+
+    def _find_ets2_pid(self) -> Optional[int]:
+        if not _PSUTIL_OK:
+            return None
+        try:
+            for p in psutil.process_iter(['pid', 'name']):
+                pname = (p.info['name'] or '').lower()
+                if pname in ('eurotrucks2.exe', 'amtrucks.exe'):
+                    return p.info['pid']
+        except Exception:
+            pass
+        return None
+
+    def _ensure_scs_telemetry(self):
+        """Thu ket noi them vung nho Local\\SCSTelemetry de lay gia tri hop so dashboard chuan."""
+        if not self.pBufScs:
+            try:
+                self.hMapScs = self.k32.OpenFileMappingW(0x0004, False, "Local\\SCSTelemetry")
+                if self.hMapScs:
+                    self.pBufScs = self.k32.MapViewOfFile(self.hMapScs, 0x0004, 0, 0, 32768)
+            except Exception:
+                pass
 
     def connect(self) -> bool:
         if self.pBuf:
+            if _PSUTIL_OK and self.ets2_pid:
+                if not psutil.pid_exists(self.ets2_pid):
+                    self.close()
+                    return False
+            self._ensure_scs_telemetry()
             return True
         # File mapping name do ets2-telemetry-server.dll tao trong game
         self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
         if self.hMap:
             self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 2048)
             if self.pBuf:
+                self.ets2_pid = self._find_ets2_pid()
+                self._ensure_scs_telemetry()
                 return True
             self.k32.CloseHandle(self.hMap)
             self.hMap = None
+
+        # Neu chua mo duoc SHM (game dang khoi dong trong doan intro), kiem tra tien trinh eurotrucks2
+        if _PSUTIL_OK:
+            now = time.time()
+            if now - getattr(self, "_last_pid_scan", 0.0) >= 0.5:
+                self._last_pid_scan = now
+                pid = self._find_ets2_pid()
+                if pid:
+                    self.ets2_pid = pid
+                    return True
         return False
 
     def close(self):
         if self.pBuf:
             try:
-                self.k32.UnmapViewOfFile(self.pBuf)
+                self.k32.UnmapViewOfFile(ctypes.c_void_p(self.pBuf))
             except Exception:
                 pass
             self.pBuf = None
@@ -117,19 +193,119 @@ class Ets2SharedMemoryReader:
             except Exception:
                 pass
             self.hMap = None
+        if self.pBufScs:
+            try:
+                self.k32.UnmapViewOfFile(ctypes.c_void_p(self.pBufScs))
+            except Exception:
+                pass
+            self.pBufScs = None
+        if self.hMapScs:
+            try:
+                self.k32.CloseHandle(self.hMapScs)
+            except Exception:
+                pass
+            self.hMapScs = None
+        self.ets2_pid = None
+
+    # Funbit ETS2 Telemetry Plugin shared memory struct offsets (verified from plugin source)
+    # Offset 0:   uint32  time          - tick counter / simulation timestamp
+    # Offset 4:   uint32  paused        - 1 if game is paused
+    # Offset 8:   uint32  pluginVersion - plugin version number (phai >= 1)
+    # Offset 24:  float   speed         - truck speed in m/s
+    # Offset 64:  int32   gear          - current gear
+    # Offset 80:  float[4] rpm, rpmMax, fuel, fuelCapacity
+    # Offset 160: int32   timeAbsolute  - tong so phut troi qua trong the gioi game ETS2 (chuan 100%)
+    # Offset 564: int32   retarder
+    # Offset 656: float[6] wear (engine, trans, cabin, chassis, wheels, trailer)
+    # Offset 680: float   odometer (km)
+    # Offset 684: float   cruiseControlSpeed (m/s)
+    # Offset 996: int32   displayedGear
+    # Offset 1000: float  navigationDistance (m)
+    # Offset 1008: float  navigationSpeedLimit (m/s)
 
     def read(self) -> Optional[Dict[str, Any]]:
         if not self.connect():
             return None
         try:
+            if _PSUTIL_OK and self.ets2_pid:
+                if not psutil.pid_exists(self.ets2_pid):
+                    self.close()
+                    return None
+
+            # Neu chua co pBuf (game dang trong doan intro khoi dong chua kip nap plugin):
+            if not self.pBuf:
+                # Thu ket noi lai SHM neu plugin vua tao xong
+                self.hMap = self.k32.OpenFileMappingW(0x0004, False, "Local\\Ets2TelemetryServer")
+                if self.hMap:
+                    self.pBuf = self.k32.MapViewOfFile(self.hMap, 0x0004, 0, 0, 2048)
+                if not self.pBuf:
+                    # Tra ve goi connected mac dinh de ESP32 hien thi Loading Splash ngay trong doan intro!
+                    return {
+                        "game": "ets2",
+                        "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
+                        "gear": 0, "rpm": 0, "rpm_max": 2500,
+                        "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0,
+                        "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
+                        "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
+                        "wear": 0.0, "trk_w": 0, "crg_w": -1, "trl_on": 0,
+                        "odo": 0, "eta_d": 0, "gh": -1, "gm": -1,
+                        "conn": 1, "pause": 1,
+                    }
+
             raw = ctypes.string_at(self.pBuf, 1024)
-            time_ms, paused = struct.unpack_from("<II", raw, 0)
-            if time_ms == 0:
+
+            # Offset 8: pluginVersion (phai >= 1 neu DLL telemetry da duoc nap trong game)
+            plugin_ver = struct.unpack_from("<I", raw, 8)[0]
+            if plugin_ver < 1:
                 return None
 
-            t_game = struct.unpack_from("<I", raw, 8)[0]
-            game_h = (t_game // 60) % 24
-            game_m = t_game % 60
+            # Offset 4: paused flag
+            paused = struct.unpack_from("<I", raw, 4)[0]
+
+            # Offset 160: timeAbsolute (minutes elapsed in game world, non-zero = in-game)
+            time_absolute = struct.unpack_from("<i", raw, 160)[0]
+
+            # Khi time_absolute == 0: Game dang o man hinh menu / profile / loading
+            # ETS2 da bat va DLL telemetry dang chay -> gui payload connected de ESP32 hien thi Loading Splash!
+            if time_absolute <= 0:
+                return {
+                    "game": "ets2",
+                    "spd": 0,
+                    "lim": 0,
+                    "cc": 0,
+                    "cc_on": 0,
+                    "gear": 0,
+                    "rpm": 0,
+                    "rpm_max": 2500,
+                    "fuel": 100,
+                    "fuel_l": 0,
+                    "fuel_cap": 0,
+                    "fuel_warn": 0,
+                    "bl_l": 0,
+                    "bl_r": 0,
+                    "low": 0,
+                    "high": 0,
+                    "park": 1,
+                    "air": 0,
+                    "ret": 0,
+                    "wip": 0,
+                    "bcn": 0,
+                    "mbrk": 0,
+                    "wear": 0.0,
+                    "trk_w": 0,
+                    "crg_w": -1,
+                    "trl_on": 0,
+                    "odo": 0,
+                    "eta_d": 0,
+                    "gh": -1,
+                    "gm": -1,
+                    "conn": 1,
+                    "pause": 1,
+                }
+
+            # Decode game clock tu timeAbsolute (offset 160) - tong so phut trong game ETS2 (chuan 100%)
+            game_h = (time_absolute // 60) % 24
+            game_m = time_absolute % 60
 
             speed_ms = struct.unpack_from("<f", raw, 24)[0]
             gear = struct.unpack_from("<i", raw, 64)[0]
@@ -139,7 +315,6 @@ class Ets2SharedMemoryReader:
             wipers = raw[581]
             park = raw[582]
             mbrk = raw[583]
-            eng = raw[585]
             bl_l = raw[586]
             bl_r = raw[587]
             low = raw[591]
@@ -157,7 +332,7 @@ class Ets2SharedMemoryReader:
             total_wear = float(sum(wears))
 
             odometer = struct.unpack_from("<f", raw, 680)[0]
-            odo_km = int(round(odometer)) if odometer > 0 else 0
+            odo_km = int(round(odometer)) if (0 < odometer < 10000000.0) else 0
 
             fuel_l = int(round(fuel)) if fuel > 0 else 0
             fuel_cap = int(round(fuelCap)) if fuelCap > 0 else 0
@@ -165,9 +340,35 @@ class Ets2SharedMemoryReader:
 
             cc_spd = struct.unpack_from("<f", raw, 684)[0] * 3.6
             disp_gear = struct.unpack_from("<i", raw, 996)[0]
+            fwd_gears = struct.unpack_from("<i", raw, 68)[0]
             nav_d = struct.unpack_from("<f", raw, 1000)[0] / 1000.0
             nav_lim = struct.unpack_from("<f", raw, 1008)[0] * 3.6
             spd_kmh = max(0, int(round(speed_ms * 3.6)))
+            eta_d_km = int(round(nav_d)) if (0 < nav_d < 50000.0) else 0
+
+            # Xac dinh cap so hien thi (D1..D12) dong bo 100% voi taplo trong game:
+            # Uu tien 1: Doc gearDashboard tu Local\SCSTelemetry (offset 508, SCS SDK chuan)
+            final_gear = None
+            if self.pBufScs:
+                try:
+                    raw_scs = ctypes.string_at(self.pBufScs, 1024)
+                    scs_dash_gear = struct.unpack_from("<i", raw_scs, 508)[0]
+                    scs_mech_gear = struct.unpack_from("<i", raw_scs, 504)[0]
+                    if scs_dash_gear != 0:
+                        final_gear = scs_dash_gear
+                    elif scs_mech_gear == 0:
+                        final_gear = 0
+                except Exception:
+                    pass
+
+            # Uu tien 2 (Fallback Funbit): Bu tru crawler gear neu hop so co crawler (vi du Scania 12+2)
+            if final_gear is None:
+                raw_g = disp_gear if disp_gear != 0 else gear
+                if fwd_gears > 12 and raw_g > 0:
+                    crawlers = fwd_gears - 12
+                    final_gear = (raw_g - crawlers) if raw_g > crawlers else raw_g
+                else:
+                    final_gear = raw_g
 
             return {
                 "game": "ets2",
@@ -175,7 +376,7 @@ class Ets2SharedMemoryReader:
                 "lim": int(round(nav_lim)) if nav_lim > 0 else 0,
                 "cc": int(round(cc_spd)) if cc_spd > 0 else 0,
                 "cc_on": 1 if cc_on else 0,
-                "gear": int(disp_gear if disp_gear != 0 else gear),
+                "gear": int(final_gear),
                 "rpm": int(round(rpm)),
                 "rpm_max": int(round(rpmMax if rpmMax > 500 else 2500)),
                 "fuel": fuel_pct,
@@ -197,7 +398,7 @@ class Ets2SharedMemoryReader:
                 "crg_w": cargo_wear_pct,
                 "trl_on": trailer_on,
                 "odo": odo_km,
-                "eta_d": int(round(nav_d)) if nav_d > 0 else 0,
+                "eta_d": eta_d_km,
                 "gh": game_h,
                 "gm": game_m,
                 "conn": 1,
@@ -209,24 +410,34 @@ class Ets2SharedMemoryReader:
 
 
 def find_default_port() -> Optional[str]:
-    """Tự động tìm cổng COM của ESP32-S3 hoặc CH340/CH343."""
+    """Tự động tìm cổng COM của ESP32-S3 hoặc CH340/CH343 (Loại trừ tuyệt đối COM1 mainboard)."""
     ports = list(list_ports.comports())
     if not ports:
         return None
 
-    # Ưu tiên các cổng USB có chữ ký ESP32 / CH34x / USB Serial
+    usb_candidates = []
     for p in ports:
+        dev = p.device.upper()
         desc = (p.description or "").lower()
         hwid = (p.hwid or "").lower()
-        if "ch34" in desc or "ch34" in hwid or "esp32" in desc or "usb serial" in desc:
+
+        # Bỏ qua COM1 và cổng ACPI PNP của mainboard
+        if dev == "COM1" or "acpi\\pnp0501" in hwid or "communications port" in desc:
+            continue
+
+        # Ưu tiên cao nhất: CH340, CH343, ESP32, CP210x, USB Serial
+        if any(sig in desc or sig in hwid for sig in ["ch34", "esp32", "cp210", "usb serial", "usb-serial", "ftdi"]):
             return p.device
 
-    # Nếu chỉ có 1 cổng không phải COM1
-    non_com1 = [p.device for p in ports if p.device != "COM1"]
-    if non_com1:
-        return non_com1[0]
+        # Cổng bất kỳ có chứa chữ ký USB
+        if "usb" in hwid or "usb" in desc:
+            usb_candidates.append(p.device)
 
-    return ports[0].device
+    if usb_candidates:
+        return usb_candidates[0]
+
+    # Tuyệt đối KHÔNG trả về COM1 nếu chưa tìm thấy thiết bị USB
+    return None
 
 
 class Ets2DesktopCompanion:
@@ -237,17 +448,12 @@ class Ets2DesktopCompanion:
         server_url: Optional[str] = None,
         fps: int = 25,
         demo: bool = False,
-        game: str = "ets2",
         test_file: Optional[str] = None,
     ):
         self.specified_port = port
         self.port_name = port
         self.baud = baud
-        self.game = game.lower()
-        if server_url:
-            self.server_url = server_url
-        else:
-            self.server_url = DEFAULT_FS25_URL if self.game == "fs25" else DEFAULT_ETS2_URL
+        self.server_url = server_url or DEFAULT_ETS2_URL
 
         self.target_interval = 1.0 / max(1, fps)
         self.demo = demo
@@ -256,7 +462,7 @@ class Ets2DesktopCompanion:
         self.running = False
 
         # Session HTTP tai su dung TCP socket keep-alive (giam do tre < 2ms)
-        self.session = requests.Session()
+        self.session = requests.Session() if _REQUESTS_OK else None
 
         # Demo simulation state
         self._sim_t = 0.0
@@ -275,7 +481,7 @@ class Ets2DesktopCompanion:
 
         # Reader doc truc tiep Windows Shared Memory cua ETS2 (khong can mo port 25555)
         self.shm_reader = (
-            Ets2SharedMemoryReader() if (self.game == "ets2" and sys.platform == "win32") else None
+            Ets2SharedMemoryReader() if sys.platform == "win32" else None
         )
         self.source_name = "WAITING"
 
@@ -376,6 +582,12 @@ class Ets2DesktopCompanion:
             if not self.port_name:
                 return False
 
+        if self.port_name.upper() == "COM1":
+            print("[SERIAL] Bo qua COM1 vi la cong mainboard, khong phai robot ESP32.")
+            if not self.specified_port:
+                self.port_name = None
+            return False
+
         try:
             print(f"[SERIAL] Dang mo cong {self.port_name} ({self.baud} baud)...")
             self.ser = serial.Serial()
@@ -390,11 +602,8 @@ class Ets2DesktopCompanion:
             self.game_connected_prev = False
             # Neu o che do DEMO thi bat che do GAME ngay
             if self.demo:
-                if self.game == "fs25":
-                    self.send_command("MODE=FS25")
-                else:
-                    self.send_command("MODE=GAME")
-            print(f"[SERIAL] Da ket noi thanh cong voi {self.port_name} (Che do: {self.game.upper()})!")
+                self.send_command("MODE=GAME")
+            print(f"[SERIAL] Da ket noi thanh cong voi {self.port_name} (ETS2 Telemetry)!")
             return True
         except Exception as e:
             print(f"[SERIAL] Khong the mo cong {self.port_name}: {e}")
@@ -419,6 +628,9 @@ class Ets2DesktopCompanion:
     def ensure_serial(self) -> bool:
         """Tu dong kiem tra va ket noi lai cong Serial neu bi ngat."""
         if self.ser and self.ser.is_open:
+            if getattr(self.ser, "port", "").upper() == "COM1":
+                self.close_serial()
+                return False
             return True
         return self.open_serial()
 
@@ -480,6 +692,8 @@ class Ets2DesktopCompanion:
 
     def fetch_server_telemetry(self) -> Optional[Dict[str, Any]]:
         """Lay telemetry tu game server qua HTTP REST (ETS2 port 25555 hoac FS25 port 8080/SimHub)."""
+        if not _REQUESTS_OK or not self.session:
+            return None
         try:
             r = self.session.get(self.server_url, timeout=0.15)
             if r.status_code == 200:
@@ -498,18 +712,13 @@ class Ets2DesktopCompanion:
                 self.server_ok = True
                 self.source_name = "SHARED MEMORY (DIRECT)"
                 return shm_data
-            else:
-                self.shm_reader.close()
 
-        # 2. Fallback sang HTTP Telemetry Server (Port 25555 cho ETS2, Port 8080 cho FS25)
+        # 2. Fallback sang HTTP Telemetry Server (Port 25555 cho ETS2)
         raw = self.fetch_server_telemetry()
         if raw:
             self.server_ok = True
             self.source_name = f"HTTP REST ({self.server_url})"
-            if self.game == "fs25":
-                return self.extract_fs25_telemetry_payload(raw)
-            else:
-                return self.extract_telemetry_payload(raw)
+            return self.extract_telemetry_payload(raw)
 
         self.server_ok = False
         self.source_name = "WAITING"
@@ -603,71 +812,6 @@ class Ets2DesktopCompanion:
             res["evt"] = demo_evt
         return res
 
-    def generate_fs25_demo_telemetry(self) -> Dict[str, Any]:
-        """Mo phong may cay / may gat Farming Simulator 25 tren dong."""
-        self._sim_t += self.target_interval
-
-        # Chu ky 45s: Ra dong -> Ha dan cay & Bat may gat -> Lam viec -> Day thung -> Xa lua
-        cycle = (self._sim_t % 45.0) / 45.0
-        beacon = True  # Bat den chop xoay
-        work_light = (int(self._sim_t / 15.0) % 2 == 0)
-
-        if cycle < 0.15:
-            # Di chuyen tren duong: 24 km/h, nang dan, tat nong cu
-            spd = 24.0 + math.sin(self._sim_t) * 2.0
-            cru = 24
-            cru_on = True
-            down = False
-            pto = False
-            pipe = False
-            fill = 30
-        elif cycle < 0.70:
-            # Dang cay / gat tren dong: 12-14 km/h, ha dan nong cu, bat may moc (PTO)
-            spd = 13.0 + math.sin(self._sim_t * 2.0) * 1.5
-            cru = 14
-            cru_on = True
-            down = True
-            pto = True
-            pipe = False
-            # Thung lua day dan tu 30% -> 98%
-            progress = (cycle - 0.15) / 0.55
-            fill = int(30 + progress * 68)
-        else:
-            # Thung day: Dung may, mo ong xa (Pipe Out) de xa lua vao xe keo
-            spd = 0.0
-            cru = 14
-            cru_on = False
-            down = False
-            pto = False
-            pipe = True
-            progress = (cycle - 0.70) / 0.30
-            fill = max(5, int(98 - progress * 93))
-
-        turn_l = (0.65 < cycle < 0.70)
-        self._sim_fuel = max(10.0, 95.0 - (self._sim_t * 0.02))
-
-        return {
-            "game": "fs25",
-            "speed": int(round(spd)),
-            "maxSpd": 45,
-            "rpm": 1850 if spd > 0 else 850,
-            "rpmMax": 2200,
-            "cru": cru,
-            "cruOn": cru_on,
-            "fuel": int(self._sim_fuel),
-            "fill": fill,
-            "dmg": 4,
-            "hr": round(14.2 + self._sim_t / 3600.0, 1),
-            "bcn": beacon,
-            "wrk": work_light,
-            "turnL": turn_l,
-            "turnR": False,
-            "down": down,
-            "pto": pto,
-            "pipe": pipe,
-            "motor": True,
-        }
-
     def extract_telemetry_payload(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """Trich xuat cac truong can thiet tu JSON goc cua Telemetry Server."""
         game = raw.get("game", {})
@@ -696,8 +840,13 @@ class Ets2DesktopCompanion:
         truck_wear_pct = int(round(truck_wear_avg * 100.0))
         odo_km = int(round(truck.get("odometer", 0.0)))
 
-        # Gear: displayedGear hoac gear
+        # Gear: displayedGear hoac gear (kem bu tru crawler gear)
         gear = truck.get("displayedGear", truck.get("gear", 0))
+        fwd_gears = truck.get("forwardGears", 12)
+        if fwd_gears > 12 and gear > 0:
+            crawlers = fwd_gears - 12
+            if gear > crawlers:
+                gear = gear - crawlers
 
         # ETA
         eta_d = int(round(nav.get("estimatedDistance", 0) / 1000.0))
@@ -752,50 +901,13 @@ class Ets2DesktopCompanion:
         }
         return payload
 
-    def extract_fs25_telemetry_payload(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        """Trich xuat du lieu that tu Farming Simulator 25 Telemetry Mod / SimHub REST."""
-        vehicle = raw.get("vehicle", raw.get("drivetrain", raw))
-        lights = raw.get("lights", vehicle.get("lights", {}))
-
-        spd = vehicle.get("speed", raw.get("SpeedKmh", raw.get("Speed", 0.0)))
-        max_spd = vehicle.get("maxSpeed", raw.get("MaxSpeed", 50.0))
-        rpm = vehicle.get("rpm", raw.get("Rpm", raw.get("EngineRpm", 0.0)))
-        rpm_max = vehicle.get("rpmMax", 2200.0)
-        fuel_pct = vehicle.get("fuelPercentage", raw.get("Fuel", 100.0))
-        fill_pct = raw.get("fillLevelPct", raw.get("fillPercentage", 0.0))
-
-        return {
-            "game": "fs25",
-            "speed": int(round(spd)),
-            "maxSpd": int(round(max_spd)),
-            "rpm": int(round(rpm)),
-            "rpmMax": int(round(rpm_max)),
-            "cru": int(round(vehicle.get("cruiseControlSpeed", 0))),
-            "cruOn": bool(vehicle.get("cruiseControlActive", False)),
-            "fuel": int(round(fuel_pct)),
-            "fill": int(round(fill_pct)),
-            "dmg": int(round(vehicle.get("damagePercentage", 0))),
-            "hr": round(vehicle.get("operatingTimeHours", 0.0), 1),
-            "bcn": bool(lights.get("beaconLights", raw.get("BeaconLight", False))),
-            "wrk": bool(lights.get("workLights", raw.get("WorkLight", False))),
-            "turnL": bool(lights.get("turnLightLeft", False)),
-            "turnR": bool(lights.get("turnLightRight", False)),
-            "down": bool(raw.get("implementLowered", raw.get("ToolLowered", False))),
-            "pto": bool(raw.get("implementTurnedOn", raw.get("PtoActive", False))),
-            "pipe": bool(raw.get("pipeUnfolded", raw.get("PipeOpen", False))),
-            "motor": bool(vehicle.get("motorRunning", True)),
-        }
-
     def send_telemetry_packet(self, payload: Dict[str, Any]):
         """Dong goi va truyen sang ESP32 duoi dang JSON gon nhe."""
         if not self.ser or not self.ser.is_open:
             return
 
         json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        if self.game == "fs25":
-            line = b"FS25=" + json_bytes + b"\n"
-        else:
-            line = b"ETS2=" + json_bytes + b"\n"
+        line = b"ETS2=" + json_bytes + b"\n"
 
         try:
             self.ser.write(line)
@@ -822,67 +934,44 @@ class Ets2DesktopCompanion:
     def render_console_dashboard(self, p: Dict[str, Any]):
         """Ve bang dieu khien truc quan trong terminal."""
         self.update_fps()
-        if self.game == "fs25":
-            spd = p.get("speed", 0)
-            max_s = p.get("maxSpd", 45)
-            fill = p.get("fill", 0)
-            fuel = p.get("fuel", 0)
-            cru = p.get("cru", 0)
-            cru_str = f"CRU:{cru}k" if p.get("cruOn") else "CRU:--"
-            bcn = "[BCN]" if p.get("bcn") else "     "
-            wrk = "[WRK]" if p.get("wrk") else "     "
-            pto = "[PTO:ON]" if p.get("pto") else "[PTO:OFF]"
-            down = "[DOWN]" if p.get("down") else "[UP]  "
-            pipe = "[PIPE]" if p.get("pipe") else "      "
+        spd = p.get("spd", 0)
+        lim = p.get("lim", 0)
+        gear = p.get("gear", 0)
+        gear_str = f"D{gear}" if gear > 0 else ("N" if gear == 0 else f"R{abs(gear)}")
+        cc = p.get("cc", 0)
+        cc_str = f"CRUISE {cc}k" if p.get("cc_on", 0) else "          "
+        rpm = p.get("rpm", 0)
+        fuel = p.get("fuel", 0)
+        bl_l = "<" if p.get("bl_l", 0) else " "
+        bl_r = ">" if p.get("bl_r", 0) else " "
+        lim_str = f"[{lim}]" if lim > 0 else "[--]"
+        warn_str = "! OVER" if (lim > 0 and spd > lim) else "      "
 
-            bar_len = 10
-            filled = min(bar_len, max(0, int(spd / max_s * bar_len)))
-            bar_str = "#" * filled + "-" * (bar_len - filled)
+        ret = p.get("ret", 0)
+        ret_str = f"RET:{ret}" if ret > 0 else "     "
+        wip_str = "WIP" if p.get("wip", 0) else "   "
+        bcn_str = "BCN" if p.get("bcn", 0) else "   "
+        evt_str = f"| >> {p['evt']} <<" if p.get("evt") else ""
 
+        trkw = p.get("trk_w", 0)
+        crgw = f"{p.get('crg_w', 0)}%" if p.get("trl_on", 0) else "--"
+        fuel_l = p.get("fuel_l", 0)
+        fuel_str = f"{fuel}% ({fuel_l}L)" if fuel_l > 0 else f"{fuel}%"
+        eta_d = p.get("eta_d", 0)
+        eta_str = f"| ETA: {eta_d}km " if eta_d > 0 else ""
+
+        try:
             sys.stdout.write(
-                f"\r| FS25 | SPD:{spd:2d} km/h [{bar_str}] | {bcn} {wrk} | {pto} {down} {pipe} | FILL:{fill:2d}% | OIL:{fuel:2d}% | {cru_str} | TX:{self.current_fps:4.1f} FPS "
+                f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | CRG: {crgw} {eta_str}| {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
             )
             sys.stdout.flush()
-        else:
-            spd = p.get("spd", 0)
-            lim = p.get("lim", 0)
-            gear = p.get("gear", 0)
-            gear_str = f"D{gear}" if gear > 0 else ("N" if gear == 0 else f"R{abs(gear)}")
-            cc = p.get("cc", 0)
-            cc_str = f"CRUISE {cc}k" if p.get("cc_on", 0) else "          "
-            rpm = p.get("rpm", 0)
-            fuel = p.get("fuel", 0)
-            bl_l = "<" if p.get("bl_l", 0) else " "
-            bl_r = ">" if p.get("bl_r", 0) else " "
-            lim_str = f"[{lim}]" if lim > 0 else "[--]"
-            warn_str = "! OVER" if (lim > 0 and spd > lim) else "      "
-
-            ret = p.get("ret", 0)
-            ret_str = f"RET:{ret}" if ret > 0 else "     "
-            wip_str = "WIP" if p.get("wip", 0) else "   "
-            bcn_str = "BCN" if p.get("bcn", 0) else "   "
-            evt_str = f"| >> {p['evt']} <<" if p.get("evt") else ""
-
-            trkw = p.get("trk_w", 0)
-            crgw = f"{p.get('crg_w', 0)}%" if p.get("trl_on", 0) else "--"
-            fuel_l = p.get("fuel_l", 0)
-            fuel_str = f"{fuel}% ({fuel_l}L)" if fuel_l > 0 else f"{fuel}%"
-            eta_d = p.get("eta_d", 0)
-            eta_str = f"| ETA: {eta_d}km " if eta_d > 0 else ""
-
-            try:
-                sys.stdout.write(
-                    f"\r| {bl_l} {gear_str:3s} {bl_r} | SPD: {spd:3d} km/h {lim_str} {warn_str} | RPM: {rpm:4d} | FUEL: {fuel_str} | TRK: {trkw}% | CRG: {crgw} {eta_str}| {ret_str} {wip_str} {bcn_str} | TX: {self.current_fps:4.1f} FPS {evt_str} "
-                )
-                sys.stdout.flush()
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     def run(self):
         self.running = True
-        game_name = "FARMING SIMULATOR 25" if self.game == "fs25" else "EURO TRUCK SIMULATOR 2"
         print("\n" + "=" * 70)
-        print(f"  MIU EILIK - {game_name} DASHBOARD COMPANION")
+        print("  MIU EILIK - EURO TRUCK SIMULATOR 2 DASHBOARD COMPANION")
         print(f"  Port: {self.port_name or 'Auto-Detect'} | Rate: {int(1.0 / self.target_interval)} FPS")
         if self.demo:
             print("  Che do: MO PHONG XE CHAY (Demo Mode)")
@@ -898,19 +987,15 @@ class Ets2DesktopCompanion:
 
                 if not self.ensure_serial():
                     self.dump_state(None)
-                    source = "Windows Shared Memory" if self.game == "ets2" else f"Port 8080 ({self.server_url})"
                     sys.stdout.write(
-                        f"\r[DANG DOI ROBOT] Dang doi ket noi robot ESP32 qua USB... | {source}   "
+                        "\r[DANG DOI ROBOT] Dang doi ket noi robot ESP32 qua USB... | Windows Shared Memory   "
                     )
                     sys.stdout.flush()
                     time.sleep(1.0)
                     continue
 
                 if self.demo:
-                    if self.game == "fs25":
-                        payload = self.generate_fs25_demo_telemetry()
-                    else:
-                        payload = self.generate_demo_telemetry()
+                    payload = self.generate_demo_telemetry()
                     self.send_telemetry_packet(payload)
                     self.dump_state(payload)
                     self.render_console_dashboard(payload)
@@ -918,23 +1003,16 @@ class Ets2DesktopCompanion:
                     payload = self.fetch_live_telemetry()
                     game_connected = False
                     if payload is not None:
-                        if self.game == "fs25":
-                            game_connected = bool(payload.get("motor") or payload.get("speed", 0) > 0)
-                        else:
-                            game_connected = bool(payload.get("conn", 0) == 1)
+                        game_connected = bool(payload.get("conn", 0) == 1)
 
                     if game_connected and payload is not None:
                         # Vao duoc man hinh chinh cua game
                         if not self.game_connected_prev:
-                            print(f"\n[GAME CONNECTED] {self.game.upper()} da vao man hinh chinh! ({self.source_name}) -> Robot dang hien Loading Splash...")
+                            print(f"\n[GAME CONNECTED] ETS2 da vao man hinh chinh! ({self.source_name}) -> Chuyen man hinh Cockpit...")
                             self.game_connected_prev = True
-                            if self.game == "fs25":
-                                self.send_command("MODE=FS25")
-                            else:
-                                self.send_command("MODE=GAME")
+                            self.send_command("MODE=GAME")
                             time.sleep(0.05)
-                        if self.game == "ets2":
-                            self.process_events(payload)
+                        self.process_events(payload)
                         self.send_telemetry_packet(payload)
                         self.dump_state(payload)
                         self.render_console_dashboard(payload)
@@ -942,13 +1020,12 @@ class Ets2DesktopCompanion:
                         # Game chua bat hoac chua ket noi
                         self.dump_state(None)
                         if self.game_connected_prev:
-                            print(f"\n[GAME DISCONNECTED] Game da thoat -> Chuyen robot ve mat RoboEyes")
+                            print("\n[GAME DISCONNECTED] Game da thoat -> Chuyen robot ve mat RoboEyes")
                             self.send_command("MODE=EYES")
                             self.game_connected_prev = False
 
-                        source = "Shared Memory hoac Port 25555" if self.game == "ets2" else f"Port 8080 ({self.server_url})"
                         sys.stdout.write(
-                            f"\r[DANG CHO GAME] Dang doi ETS2 khoi dong ({source})... | Robot van giu man hinh Mat RoboEyes   "
+                            "\r[DANG CHO GAME] Dang doi ETS2 khoi dong (Shared Memory)... | Robot van giu man hinh Mat RoboEyes   "
                         )
                         sys.stdout.flush()
                         time.sleep(0.3)
@@ -962,6 +1039,10 @@ class Ets2DesktopCompanion:
 
         except KeyboardInterrupt:
             print("\n[STOP] Nguoi dung yeu cau dung chuong trinh...")
+        except Exception as e:
+            import traceback
+            print(f"\n[UNHANDLED ERROR] Loi khong mong muon trong run(): {e}")
+            traceback.print_exc()
         finally:
             self.running = False
             self.close_serial()
@@ -974,11 +1055,10 @@ class Ets2DesktopCompanion:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Miu Eilik Sim Dashboard Companion (ETS2 & FS25)")
+    parser = argparse.ArgumentParser(description="Miu Eilik ETS2 Dashboard Companion")
     parser.add_argument("--port", "-p", default=None, help="Cong COM (vi du: COM4, COM5)")
-    parser.add_argument("--game", "-g", choices=["ets2", "fs25"], default="ets2", help="Game sim: ets2 hoac fs25 (mac dinh: ets2)")
     parser.add_argument("--baud", "-b", type=int, default=DEFAULT_BAUD, help="Baud rate (mac dinh: 115200)")
-    parser.add_argument("--server", "-s", default=None, help="URL Telemetry Server (mac dinh: 25555 cho ETS2, 8080 cho FS25)")
+    parser.add_argument("--server", "-s", default=None, help="URL Telemetry Server (mac dinh: 25555 cho ETS2)")
     parser.add_argument("--fps", "-f", type=int, default=30, help="Toc do cap nhat FPS (mac dinh: 30)")
     parser.add_argument("--demo", "-d", action="store_true", help="Che do mo phong demo khong can bat game")
     parser.add_argument("--test-file", help="Duong dan den file Ets2TestTelemetry.json de test")
@@ -999,7 +1079,6 @@ def main():
         server_url=args.server,
         fps=args.fps,
         demo=args.demo,
-        game=args.game,
         test_file=args.test_file,
     )
     companion.run()

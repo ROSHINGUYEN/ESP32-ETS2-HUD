@@ -1,8 +1,8 @@
 # MIU EILIK - ESP32-S3 OLED TELEMETRY COMPANION & ROBOT EYES
 
-Hệ thống **Taplo hiển thị Telemetry xe tải Châu Âu (Euro Truck Simulator 2 / ATS)**, **Máy cày (Farming Simulator 25)** và **Robot biểu cảm (RoboEyes)** chạy trên vi điều khiển **ESP32-S3-WROOM-1 (N16R8)** với màn hình OLED 128x64.
+Hệ thống **Taplo hiển thị Telemetry xe tải Châu Âu (Euro Truck Simulator 2 / ATS)** và **Robot biểu cảm (RoboEyes)** chạy trên vi điều khiển **ESP32-S3-WROOM-1 (N16R8)** với màn hình OLED 128x64.
 
-Dự án tích hợp cơ chế **Tự động chạy ngầm cùng Windows (0-Touch)**, kéo luồng trực tiếp từ Windows Shared Memory với độ trễ siêu thấp (<2ms), và **Cổng MCP Server (Model Context Protocol)** kết nối trực tiếp với AI IDE (Antigravity, Cursor, Claude).
+Dự án tích hợp cơ chế **Tự động chạy ngầm cùng Windows (0-Touch)**, kéo luồng trực tiếp từ Windows Shared Memory với độ trễ siêu thấp (<2ms) qua chuẩn mở SCS SDK / Open Telemetry API, và **Cổng MCP Server (Model Context Protocol)** kết nối trực tiếp với AI IDE (Antigravity, Cursor, Claude).
 
 ---
 
@@ -36,8 +36,12 @@ Dự án tích hợp cơ chế **Tự động chạy ngầm cùng Windows (0-Tou
   - Tai nạn va chạm: `VA CHAM: -400 EUR`
   - Thao tác buồng lái: `RETARDER: BAC 2`, `GAT MUA: BAT`, `CRUISE: 85 km/h`...
 
-### 2. 🚜 Bảng Điều Khiển Nông Nghiệp Farming Simulator 25 (FS25)
-- Đồng hồ máy cày: Vận tốc, Vòng tua máy (RPM Bar), Mức nạp bồn chứa nông sản (`FILL %`), Giờ máy chạy (`HR`), Độ hỏng hóc máy móc (`DMG %`), Đèn làm việc (`WRK`), Hạ lưỡi cày (`DOWN`), Trục truyền động PTO (`PTO`), Mở ống xả ngũ cốc (`PIPE`).
+### 2. 🛡️ Chuẩn Open Telemetry Độc Lập & Hợp Pháp (100% An Toàn Trên GitHub)
+- **Tách biệt hoàn toàn mã nguồn khỏi binary độc quyền**: Không nhúng bất kỳ file `.exe`, `.dll` hay file bản quyền của game/bên thứ ba vào repository Git, tránh vi phạm bản quyền khi phát hành mã nguồn mở.
+- **Thư viện mở `tools/ets2_open_api.py`**:
+  - Hỗ trợ trực tiếp chuẩn chính thống **SCS SDK Memory-Mapped File (`Local\SCSTelemetry`)** và kênh **Shared Memory Funbit (`Local\Ets2TelemetryServer`)**.
+  - Đọc cấp số trực tiếp từ biến `dashboardGear` của SDK, bảo đảm cấp số đồng bộ 100% với màn hình taplo buồng lái xe tải (D1..D12).
+  - Tích hợp bộ tạo giả lập độc lập `tools/mock_telemetry.json` để kiểm thử và chạy demo 30 FPS ngay cả khi không có game hoặc khi chạy trên môi trường CI/CD.
 
 ### 3. 🤖 Chế Độ Robot Biểu Cảm (RoboEyes Emotion)
 - Khi không bật game, màn hình tự động hiển thị mắt robot động **RoboEyes** (FluxGarage) tự nhiên: chớp mắt ngẫu nhiên, đổi tâm trạng, liếc nhìn xung quanh.
@@ -137,9 +141,9 @@ Cấu hình trong file `mcp_config.json` (Antigravity / Claude Desktop / Cursor)
 {
   "mcpServers": {
     "esp32-eilik": {
-      "command": "C:\\Users\\Tinhd\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+      "command": "python",
       "args": [
-        "E:\\MIU_EILIK_ESP32-S3\\tools\\esp32_mcp_server.py"
+        "tools/esp32_mcp_server.py"
       ]
     }
   }

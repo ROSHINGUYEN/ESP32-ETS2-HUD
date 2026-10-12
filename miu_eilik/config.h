@@ -129,7 +129,6 @@
 #define PKT_CMD_JSON            0x03
 #define PKT_TELEMETRY_REQ       0x04
 #define PKT_GAME_TELEMETRY      0x05
-#define PKT_FS25_TELEMETRY      0x06
 
 // =====================================================================================
 // ENUMS HỆ THỐNG
@@ -137,7 +136,7 @@
 
 enum AudioSource : uint8_t { SRC_NONE = 0, SRC_FILE, SRC_USB_PC, SRC_BT_EXT };
 enum VizStyle    : uint8_t { VIZ_BEAT_EYES = 0, VIZ_WAVE_EYES, VIZ_BARS_EYES };
-enum DisplayMode : uint8_t { DISP_CLOCK = 0, DISP_EYES = 1, DISP_VISUAL = 2, DISP_STREAM = 3, DISP_GAME = 4, DISP_FS25 = 5 };
+enum DisplayMode : uint8_t { DISP_CLOCK = 0, DISP_EYES = 1, DISP_VISUAL = 2, DISP_STREAM = 3, DISP_GAME = 4 };
 enum Emotion     : uint8_t { EMO_NEUTRAL, EMO_HAPPY, EMO_ANGRY, EMO_SLEEPY, EMO_CURIOUS, EMO_CONFUSED, EMO_WAKE_UP, EMO_COUNT };
 enum Gesture     : uint8_t {
   GES_NONE = 0,

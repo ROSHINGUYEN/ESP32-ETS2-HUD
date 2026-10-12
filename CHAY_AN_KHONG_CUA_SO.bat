@@ -7,7 +7,7 @@ echo ======================================================================
 echo.
 echo [*] Dang khoi dong Miu Desktop Companion duoi nen Windows...
 
-start "" "C:\Users\Tinhd\AppData\Local\Programs\Python\Python311\pythonw.exe" "%~dp0tools\miu_desktop_ets2.py" --game ets2
+start "" pythonw "%~dp0tools\miu_desktop_ets2.py"
 
 echo.
 echo [OK] Da kich hoat chay ngam thanh cong!
