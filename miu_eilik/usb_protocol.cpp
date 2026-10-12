@@ -113,6 +113,7 @@ void UsbLink::processJson(const char* json, size_t len) {
     t.odometerKm = doc["odo"] | 0;
     t.blinkerL = (doc["bl_l"].as<int>() != 0);
     t.blinkerR = (doc["bl_r"].as<int>() != 0);
+    t.hazard = doc.containsKey("hzd") ? (doc["hzd"].as<int>() != 0) : (t.blinkerL && t.blinkerR);
     t.lightsBeamLow = (doc["low"].as<int>() != 0);
     t.lightsBeamHigh = (doc["high"].as<int>() != 0);
     t.lightsParking = (doc["park_l"].as<int>() != 0);
@@ -142,7 +143,8 @@ void UsbLink::processJson(const char* json, size_t len) {
       if (ev && strlen(ev) > 0) {
         strncpy(t.eventText, ev, sizeof(t.eventText) - 1);
         t.eventText[sizeof(t.eventText) - 1] = '\0';
-        t.eventUntilMs = millis() + (doc["evt_dur"] | 2200);
+        unsigned long dur = doc["evt_dur"] | 2500;
+        t.eventUntilMs = millis() + dur;
       }
     }
     t.lastUpdateMs = millis();

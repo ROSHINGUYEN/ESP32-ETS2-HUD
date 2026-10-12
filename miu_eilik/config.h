@@ -14,11 +14,11 @@
 #include <ArduinoJson.h>
 
 // =====================================================================================
-// MACROS: LOGGING RA CA SERIAL (USB CDC) VA SERIAL0 (UART0) CHO ARDUINO IDE MONITOR
+// MACROS: LOGGING RA SERIAL USB CDC (Tranh ghi vao Serial0 gay tran TX buffer lam treo chip)
 // =====================================================================================
-#define LOG_PRINT(...)   do { Serial.print(__VA_ARGS__);   Serial0.print(__VA_ARGS__); } while(0)
-#define LOG_PRINTLN(...) do { Serial.println(__VA_ARGS__); Serial0.println(__VA_ARGS__); } while(0)
-#define LOG_PRINTF(...)  do { Serial.printf(__VA_ARGS__);  Serial0.printf(__VA_ARGS__); } while(0)
+#define LOG_PRINT(...)   do { Serial.print(__VA_ARGS__); } while(0)
+#define LOG_PRINTLN(...) do { Serial.println(__VA_ARGS__); } while(0)
+#define LOG_PRINTF(...)  do { Serial.printf(__VA_ARGS__); } while(0)
 
 // =====================================================================================
 // CAU HINH TINH NANG:

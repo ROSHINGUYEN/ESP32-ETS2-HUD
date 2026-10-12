@@ -107,6 +107,16 @@ void processSerialLine(String line) {
     LOG_PRINTLN(F("[SYS] Lenh khoi dong lai he thong..."));
     delay(100);
     ESP.restart();
+  } else if (line.startsWith("EVENT=") || line.startsWith("EVENT ") ||
+             line.startsWith("TOAST=") || line.startsWith("TOAST ")) {
+    int eqIdx = line.indexOf('=');
+    if (eqIdx < 0) eqIdx = line.indexOf(' ');
+    String evMsg = line.substring(eqIdx + 1);
+    evMsg.trim();
+    if (evMsg.length() > 0) {
+      display.triggerEvent(evMsg.c_str(), 3000);
+      LOG_PRINTF("[EVENT] Da kich hoat thong bao vi pham/su kien: %s\n", evMsg.c_str());
+    }
   } else if (line.startsWith("ETS2=") || line.startsWith("ETS2:") ||
              (line.indexOf('{') >= 0 && (line.indexOf("\"game\"") >= 0 || line.indexOf("\"spd\"") >= 0 || line.indexOf("\"gear\"") >= 0))) {
     int startIdx = line.indexOf('{');
@@ -117,7 +127,7 @@ void processSerialLine(String line) {
   }
 }
 
-static char s0Buf[1280];
+static char s0Buf[1536];
 static uint16_t s0Len = 0;
 
 static void checkSerialCommands() {
@@ -163,7 +173,8 @@ void setup() {
   pinMode(2, OUTPUT); digitalWrite(2, LOW);
   pinMode(10, OUTPUT); digitalWrite(10, LOW);
 
-  Serial0.setRxBufferSize(2048);
+  Serial0.setRxBufferSize(4096);
+  Serial0.setTxBufferSize(1024);
   Serial0.begin(460800);
   Serial.begin(460800);
   delay(150);

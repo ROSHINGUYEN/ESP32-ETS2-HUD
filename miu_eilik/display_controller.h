@@ -69,6 +69,7 @@ struct Ets2TelemetryData {
   int odometerKm = 0;         // Tong quang duong xe da chay (km)
   bool blinkerL = false;
   bool blinkerR = false;
+  bool hazard = false;        // den khan cap (Hazard Warning Flasher)
   bool lightsBeamLow = false;
   bool lightsBeamHigh = false;
   bool parkBrake = false;

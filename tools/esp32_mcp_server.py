@@ -159,6 +159,7 @@ class DirectShmReader:
                 "beacon_on": bool(beacon),
                 "blinker_left": bool(bl_l),
                 "blinker_right": bool(bl_r),
+                "hazard_lights": bool(bl_l and bl_r),
                 "engine_running": bool(eng),
                 "paused": bool(paused != 0),
                 "source": "Windows Shared Memory (Direct SHM)"
@@ -197,12 +198,12 @@ def get_system_status() -> Dict[str, Any]:
 
     daemon_running = False
     pid = state.get("pid")
-    if pid and is_process_running(pid):
-        daemon_running = bool(state.get("daemon_running", False))
-
     now = time.time()
     last_update = state.get("timestamp", 0)
     data_fresh = (now - last_update) < 3.0 if last_update > 0 else False
+
+    if pid and data_fresh and is_process_running(pid):
+        daemon_running = bool(state.get("daemon_running", False))
 
     shm_reader = DirectShmReader()
     shm_live = shm_reader.read_telemetry()
@@ -304,19 +305,25 @@ def send_esp32_command(command: str) -> Dict[str, Any]:
     try:
         import serial
         port = status["companion_daemon"]["port"] or "COM5"
-        ser = serial.Serial(port, 115200, timeout=1.0)
+        ser = serial.Serial()
+        ser.port = port
+        ser.baudrate = 460800
+        ser.dtr = False
+        ser.rts = False
+        ser.timeout = 1.0
+        ser.open()
         ser.write((cmd + "\n").encode("utf-8"))
         time.sleep(0.05)
         ser.close()
         return {
             "success": True,
-            "method": f"Direct Serial ({port})",
+            "method": f"Direct Serial ({port} @ 460800)",
             "command": cmd
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"Khong the mo cong Serial truc tiep: {e}. Hay bat BAT_TU_DONG_CHAY_NGAM.bat de daemon chay ngam quan ly cong COM."
+            "error": f"Khong the mo cong Serial truc tiep: {e}. Hay dam bao daemon miu_desktop_ets2.py dang chay ngam de tu dong quan ly cong COM."
         }
 
 

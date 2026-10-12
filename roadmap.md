@@ -58,11 +58,7 @@ MIU_EILIK_ESP32-S3/
 │   ├── ntp_sync.h/.cpp         # Đồng bộ thời gian qua WiFi
 │   ├── servo_controller.h/.cpp # Virtual angle stub (không cấp nguồn xung PWM)
 │   └── roshi_logo.h            # Bitmap logo khởi động robot
-├── scripts/                    # Scripts vận hành tự động tiện lợi cho người dùng
-│   ├── CHAY_DEMO_THU_NGHIEM.bat # Chạy thử nghiệm mô phỏng Telemetry trên PC
-│   ├── BAT_TU_DONG_CHAY_NGAM.bat # Bật chạy ngầm cùng Windows
-│   └── TAT_TU_DONG_CHAY_NGAM.bat # Tắt chế độ tự khởi động ngầm
-├── tools/                      # Bộ công cụ PC Companion & SCS SDK Telemetry
+├── tools/                      # Bộ công cụ PC Companion & SCS SDK Telemetry (Zero-Touch Background)
 │   ├── miu_desktop_ets2.py     # Desktop Companion chính (SCS SDK SHM + Auto COM)
 │   ├── mock_telemetry.json     # Dữ liệu kiểm thử độc lập
 │   ├── esp32_mcp_server.py     # Cổng giao tiếp AI MCP Server cho IDE

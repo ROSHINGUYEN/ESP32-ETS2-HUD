@@ -101,6 +101,7 @@ void DisplayManager::begin() {
 
   if (detectedAddr != 0) {
     Wire.setClock(OLED_I2C_HZ);
+    Wire.setTimeOut(OLED_I2C_TIMEOUT_MS);
   } else {
     Wire.end();
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
@@ -630,7 +631,11 @@ void DisplayManager::updateGameTelemetry(const Ets2TelemetryData& data) {
     gameTelem.eventUntilMs = curEvtUntil;
     strncpy(gameTelem.eventText, curEvtText, sizeof(gameTelem.eventText));
   } else if (strlen(data.eventText) > 0) {
-    gameTelem.eventUntilMs = millis() + 2200;
+    if (data.eventUntilMs > millis()) {
+      gameTelem.eventUntilMs = data.eventUntilMs;
+    } else {
+      gameTelem.eventUntilMs = millis() + 2500;
+    }
   }
 
   // Kiem tra bao ve man hinh khoi dong: Trong 2.5s dau khi bat may, chi cap nhat du lieu, khong cuop man hinh boot
@@ -686,49 +691,57 @@ void DisplayManager::drawEventToast() {
     const char* val = colon + 1;
     while (*val == ' ') val++; // trim leading space
 
-    bool isMoney = (strstr(val, "EUR") != nullptr || strstr(title, "PHAT") != nullptr ||
-                    strstr(title, "THU PHI") != nullptr || strstr(title, "VA CHAM") != nullptr);
+    // Tieu de tren nen trang chu den noi bat
+    oled.fillRect(7, 16, 114, 11, SSD1306_WHITE);
+    oled.setTextColor(SSD1306_BLACK);
+    oled.setTextSize(1);
+    int tx = 64 - (strlen(title) * 6 / 2);
+    if (tx < 10) tx = 10;
+    oled.setCursor(tx, 18);
+    oled.print(title);
 
-    if (isMoney) {
-      // Tieu de nen trang chu den noi bat
-      oled.fillRect(7, 16, 114, 10, SSD1306_WHITE);
-      oled.setTextColor(SSD1306_BLACK);
-      oled.setTextSize(1);
-      int tx = 64 - (strlen(title) * 6 / 2);
-      if (tx < 10) tx = 10;
-      oled.setCursor(tx, 17);
-      oled.print(title);
-
-      // So tien tru to ro
-      oled.setTextColor(SSD1306_WHITE);
+    // Gia tri hoac so tien ben duoi
+    oled.setTextColor(SSD1306_WHITE);
+    int valLen = strlen(val);
+    if (valLen <= 9) {
       oled.setTextSize(2);
-      int vx = 64 - (strlen(val) * 12 / 2);
+      int vx = 64 - (valLen * 12 / 2);
       if (vx < 10) vx = 10;
-      oled.setCursor(vx, 29);
+      oled.setCursor(vx, 30);
       oled.print(val);
     } else {
-      // Su kien thao tac: Retarder, Gat mua, Den noc, Phanh tay...
       oled.setTextSize(1);
-      oled.setTextColor(SSD1306_WHITE);
-      int tx = 64 - (strlen(title) * 6 / 2);
-      if (tx < 8) tx = 8;
-      oled.setCursor(tx, 18);
-      oled.print(title);
-
-      oled.setTextSize(2);
-      int vx = 64 - (strlen(val) * 12 / 2);
-      if (vx < 8) vx = 8;
-      oled.setCursor(vx, 29);
+      int vx = 64 - (valLen * 6 / 2);
+      if (vx < 10) vx = 10;
+      oled.setCursor(vx, 32);
       oled.print(val);
     }
   } else {
-    // Thong bao don
+    // Truong hop khong co dau hai cham (vd: "VI PHAM", "VA CHAM", "-550 EUR", "CANH BAO")
+    oled.fillRect(7, 16, 114, 11, SSD1306_WHITE);
+    oled.setTextColor(SSD1306_BLACK);
     oled.setTextSize(1);
+    const char* defTitle = (strstr(txt, "EUR") != nullptr || strstr(txt, "PHAT") != nullptr || strstr(txt, "VI PHAM") != nullptr)
+                           ? "VI PHAM" : "CANH BAO";
+    int tx = 64 - (strlen(defTitle) * 6 / 2);
+    oled.setCursor(tx, 18);
+    oled.print(defTitle);
+
     oled.setTextColor(SSD1306_WHITE);
-    int tx = 64 - (strlen(txt) * 6 / 2);
-    if (tx < 8) tx = 8;
-    oled.setCursor(tx, 26);
-    oled.print(txt);
+    int txtLen = strlen(txt);
+    if (txtLen <= 9) {
+      oled.setTextSize(2);
+      int vx = 64 - (txtLen * 12 / 2);
+      if (vx < 10) vx = 10;
+      oled.setCursor(vx, 30);
+      oled.print(txt);
+    } else {
+      oled.setTextSize(1);
+      int vx = 64 - (txtLen * 6 / 2);
+      if (vx < 10) vx = 10;
+      oled.setCursor(vx, 32);
+      oled.print(txt);
+    }
   }
 }
 
@@ -767,11 +780,15 @@ void DisplayManager::drawGameDashboard() {
   static const uint8_t icon_wiper[]      PROGMEM = { 0x7E, 0x83, 0x85, 0x89, 0x91, 0x7E, 0x10 }; // Gat mua kinh lai
   static const uint8_t icon_horn[]       PROGMEM = { 0x32, 0x74, 0xF9, 0xFA, 0xF9, 0x74, 0x32 }; // Ken / coi loa
   static const uint8_t icon_engine[]     PROGMEM = { 0x30, 0x7E, 0xDB, 0xC3, 0x7E, 0x24, 0x66 }; // Khoi dong co Check Engine chuan ISO
+  static const uint8_t icon_hazard[]     PROGMEM = { 0x18, 0x3C, 0x5A, 0x5A, 0x99, 0x81, 0xFF }; // Tam giac den khan cap Hazard Flasher ISO
 
   // 1. TOP HEADER (y = 0..11) - DANG TAP-LO O TO HIEN DAI
-  // Xi-nhan trai (Left Blinker):
-  if (gameTelem.blinkerL) {
-    if ((now / 350) % 2 == 0) {
+  bool isHazard = gameTelem.hazard || (gameTelem.blinkerL && gameTelem.blinkerR);
+  bool blinkPhase = ((now / 350) % 2 == 0);
+
+  // Xi-nhan trai (Left Blinker) hoac Den khan cap (Hazard):
+  if (gameTelem.blinkerL || isHazard) {
+    if (blinkPhase) {
       oled.fillTriangle(7, 1, 1, 5, 7, 9, SSD1306_WHITE);
     } else {
       oled.drawTriangle(7, 1, 1, 5, 7, 9, SSD1306_WHITE);
@@ -796,8 +813,15 @@ void DisplayManager::drawGameDashboard() {
     oled.print(wLvl);
   }
 
-  // Ken / Coi (Horn - Phim H / N): Hien thi luon ro net khi bam
-  if (gameTelem.horn) {
+  // Den khan cap (Hazard Warning Lights Flasher - Icon tam giac ISO) & Ken/Coi (Horn):
+  if (isHazard) {
+    if (blinkPhase) {
+      oled.drawBitmap(37, 2, icon_hazard, 8, 7, SSD1306_WHITE);
+    }
+    if (gameTelem.horn) {
+      oled.drawBitmap(28, 2, icon_horn, 8, 7, SSD1306_WHITE);
+    }
+  } else if (gameTelem.horn) {
     oled.drawBitmap(37, 2, icon_horn, 8, 7, SSD1306_WHITE);
   }
 
@@ -837,9 +861,9 @@ void DisplayManager::drawGameDashboard() {
     oled.print(F("CC"));
   }
 
-  // Xi-nhan phai (Right Blinker):
-  if (gameTelem.blinkerR) {
-    if ((now / 350) % 2 == 0) {
+  // Xi-nhan phai (Right Blinker) hoac Den khan cap (Hazard):
+  if (gameTelem.blinkerR || isHazard) {
+    if (blinkPhase) {
       oled.fillTriangle(120, 1, 126, 5, 120, 9, SSD1306_WHITE);
     } else {
       oled.drawTriangle(120, 1, 126, 5, 120, 9, SSD1306_WHITE);
@@ -1066,15 +1090,17 @@ void DisplayManager::drawGameDashboard() {
   }
 
   // 4. POPUP TOAST NOTIFICATION CHO SU KIEN GAME / COCKPIT
-  // Nguoi dung yeu cau: XOA UI popup to che giua man hinh khi bam phim chuc nang
-  // (Cac tinh nang den, gat mua, ken, retarder, phanh, dong co da co icon ro net o Header).
-  // Chi hien thi toast khung to neu la su kien tien phat, thu phi hoac tai nan:
+  // Khong hien thi toast khung to che giua man hinh cho cac thao tac phim thong thuong
+  // (Cac tinh nang den, gat mua, ken, retarder, phanh tay da co icon ro net o Header va Taplo).
+  // Chi hien thi toast khung to cho su kien vi pham, phat tien, thu phi, tai nan, canh bao hoac lenh API:
   if (now < gameTelem.eventUntilMs && strlen(gameTelem.eventText) > 0) {
-    bool isAlert = (strstr(gameTelem.eventText, "EUR") != nullptr ||
-                    strstr(gameTelem.eventText, "PHAT") != nullptr ||
-                    strstr(gameTelem.eventText, "THU PHI") != nullptr ||
-                    strstr(gameTelem.eventText, "TAI NAN") != nullptr);
-    if (isAlert) {
+    bool isRoutine = (strstr(gameTelem.eventText, "RETARDER") != nullptr ||
+                      strstr(gameTelem.eventText, "GAT MUA") != nullptr ||
+                      strstr(gameTelem.eventText, "DEN NOC") != nullptr ||
+                      strstr(gameTelem.eventText, "PHANH MAY") != nullptr ||
+                      strstr(gameTelem.eventText, "PHANH TAY") != nullptr ||
+                      strstr(gameTelem.eventText, "CRUISE") != nullptr);
+    if (!isRoutine) {
       drawEventToast();
     }
   } else if (gameTelem.paused) {

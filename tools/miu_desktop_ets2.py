@@ -317,7 +317,7 @@ class Ets2SharedMemoryReader:
                         "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
                         "gear": 0, "rpm": 0, "rpm_max": 2500,
                         "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0, "fuel_r": 0.0,
-                        "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
+                        "bl_l": 0, "bl_r": 0, "hzd": 0, "low": 0, "high": 0, "park": 1,
                         "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
                         "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
                         "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
@@ -360,7 +360,7 @@ class Ets2SharedMemoryReader:
                     "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
                     "gear": 0, "rpm": 0, "rpm_max": 2500,
                     "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0, "fuel_r": 0.0,
-                    "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
+                    "bl_l": 0, "bl_r": 0, "hzd": 0, "low": 0, "high": 0, "park": 1,
                     "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
                     "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
                     "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
@@ -407,7 +407,7 @@ class Ets2SharedMemoryReader:
                     "spd": 0, "lim": 0, "cc": 0, "cc_on": 0,
                     "gear": 0, "rpm": 0, "rpm_max": 2500,
                     "fuel": 100, "fuel_l": 0, "fuel_cap": 0, "fuel_warn": 0, "fuel_r": 0.0,
-                    "bl_l": 0, "bl_r": 0, "low": 0, "high": 0, "park": 1,
+                    "bl_l": 0, "bl_r": 0, "hzd": 0, "low": 0, "high": 0, "park": 1,
                     "air": 0, "ret": 0, "wip": 0, "bcn": 0, "mbrk": 0,
                     "brk_l": 0, "rev_l": 0, "diff_l": 0, "lift_a": 0,
                     "oil_t": 0.0, "water_t": 0.0, "air_p": 0.0, "brake_t": 0.0, "crg_wgt": 0.0,
@@ -636,6 +636,7 @@ class Ets2SharedMemoryReader:
                 "fuel_r": round(fuel_rate, 1) if (0 <= fuel_rate < 200.0) else 0.0,
                 "bl_l": 1 if bl_l else 0,
                 "bl_r": 1 if bl_r else 0,
+                "hzd": 1 if (bl_l and bl_r) else 0,
                 "low": 1 if low else 0,
                 "high": 1 if high else 0,
                 "park_l": 1 if parking_light else 0,
@@ -977,7 +978,7 @@ class Ets2DesktopCompanion:
             if self.overspeed_start == 0.0:
                 self.overspeed_start = now
             elif (now - self.overspeed_start >= 3.0) and (now - self.last_speeding_fine >= 18.0):
-                new_event = "PHAT TOC DO: -550 EUR"
+                new_event = "VI PHAM: -550 EUR"
                 self.last_speeding_fine = now
                 self.overspeed_start = 0.0
         else:
@@ -1022,11 +1023,12 @@ class Ets2DesktopCompanion:
 
         if new_event:
             self.active_event_text = new_event
-            self.event_expire_time = now + 2.2
+            self.event_expire_time = now + 2.8
             print(f"\n[SU KIEN COCKPIT] >> {new_event} <<")
 
         if now < self.event_expire_time and self.active_event_text:
             p["evt"] = self.active_event_text
+            p["evt_dur"] = 2800
 
     def open_serial(self) -> bool:
         if not self.port_name:
@@ -1089,6 +1091,8 @@ class Ets2DesktopCompanion:
     def send_command(self, cmd: str):
         if self.ser and self.ser.is_open:
             try:
+                if getattr(self.ser, "in_waiting", 0):
+                    self.ser.read(self.ser.in_waiting)
                 line = (cmd + "\n").encode("utf-8")
                 self.ser.write(line)
             except Exception as e:
@@ -1107,6 +1111,10 @@ class Ets2DesktopCompanion:
                 except Exception:
                     pass
                 if cmd:
+                    if cmd.startswith("EVENT="):
+                        ev = cmd[6:].strip()
+                        self.active_event_text = ev
+                        self.event_expire_time = time.time() + 3.0
                     self.send_command(cmd)
                     print(f"\n[MCP] >> Da chuyen tiep lenh toi ESP32: {cmd} <<")
             except Exception:
@@ -1262,6 +1270,7 @@ class Ets2DesktopCompanion:
             "fuel_warn": 1 if self._sim_fuel < 15.0 else 0,
             "bl_l": 1 if blinker_l else 0,
             "bl_r": 1 if blinker_r else 0,
+            "hzd": 1 if (blinker_l and blinker_r) else 0,
             "low": 1,
             "high": 0,
             "park": 1 if self._sim_speed == 0 else 0,
@@ -1390,6 +1399,9 @@ class Ets2DesktopCompanion:
         elif isinstance(et_raw, (int, float)):
             eta_t = int(round(et_raw / 60.0))
 
+        bl_l_val = 1 if (truck.get("blinkerLeftActive", False) or truck.get("blinkerLeftOn", False)) else 0
+        bl_r_val = 1 if (truck.get("blinkerRightActive", False) or truck.get("blinkerRightOn", False)) else 0
+        hzd_val = 1 if (truck.get("hazardWarningOn", False) or truck.get("hazardLightsOn", False) or (bl_l_val and bl_r_val)) else 0
         payload = {
             "game": "ets2",
             "spd": int(round(abs(truck.get("speed", 0.0)))),
@@ -1403,8 +1415,9 @@ class Ets2DesktopCompanion:
             "fuel_l": fuel_l,
             "fuel_cap": fuel_cap_l,
             "fuel_warn": 1 if truck.get("fuelWarningOn", False) else 0,
-            "bl_l": 1 if (truck.get("blinkerLeftActive", False) or truck.get("blinkerLeftOn", False)) else 0,
-            "bl_r": 1 if (truck.get("blinkerRightActive", False) or truck.get("blinkerRightOn", False)) else 0,
+            "bl_l": bl_l_val,
+            "bl_r": bl_r_val,
+            "hzd": hzd_val,
             "low": 1 if truck.get("lightsBeamLowOn", False) else 0,
             "high": 1 if truck.get("lightsBeamHighOn", False) else 0,
             "park_l": 1 if truck.get("lightsParkingOn", False) else 0,
@@ -1476,7 +1489,7 @@ class Ets2DesktopCompanion:
             "game", "spd", "lim", "cc", "cc_on", "gear", "g_str", "g_type", "rpm", "rpm_max",
             "fuel", "fuel_l", "fuel_cap", "fuel_warn", "fuel_r",
             "trk_w", "trl_w", "crg_w", "crg_wgt", "trl_on", "odo",
-            "bl_l", "bl_r", "low", "high", "park",
+            "bl_l", "bl_r", "hzd", "low", "high", "park",
             "air", "air_p", "oil_t", "water_t", "brake_t",
             "diff_l", "lift_a", "brk_l", "rev_l",
             "ret", "wip", "wip_lvl", "bcn", "mbrk",
@@ -1489,6 +1502,8 @@ class Ets2DesktopCompanion:
         line = b"ETS2=" + json_bytes + b"\n"
 
         try:
+            if getattr(self.ser, "in_waiting", 0):
+                self.ser.read(self.ser.in_waiting)
             self.ser.write(line)
             self.packets_sent += 1
             self.fps_counter += 1
@@ -1652,23 +1667,36 @@ def main():
 
     args = parser.parse_args()
 
-    port = args.port
-    if not port:
-        port = find_default_port()
-        if port:
-            print(f"[AUTO-DETECT] Tim thay cong: {port}")
-        else:
-            print("[AUTO-DETECT] Chua tim thay cong COM, he thong se tu dong cho robot ket noi...")
+    while True:
+        try:
+            port = args.port
+            if not port:
+                port = find_default_port()
+                if port:
+                    print(f"[AUTO-DETECT] Tim thay cong: {port}")
+                else:
+                    print("[AUTO-DETECT] Chua tim thay cong COM, he thong se tu dong cho robot ket noi...")
 
-    companion = Ets2DesktopCompanion(
-        port=port,
-        baud=args.baud,
-        server_url=args.server,
-        fps=args.fps,
-        demo=args.demo,
-        test_file=args.test_file,
-    )
-    companion.run()
+            companion = Ets2DesktopCompanion(
+                port=port,
+                baud=args.baud,
+                server_url=args.server,
+                fps=args.fps,
+                demo=args.demo,
+                test_file=args.test_file,
+            )
+            companion.run()
+        except KeyboardInterrupt:
+            print("\n[THOAT] Dung tien trinh theo yeu cau nguoi dung.")
+            break
+        except Exception as e:
+            err_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Daemon loi: {e}\n"
+            try:
+                with open(os.path.join(os.path.dirname(__file__), "crash.log"), "a", encoding="utf-8") as f:
+                    f.write(err_msg)
+            except Exception:
+                pass
+            time.sleep(2.0)
 
 
 if __name__ == "__main__":

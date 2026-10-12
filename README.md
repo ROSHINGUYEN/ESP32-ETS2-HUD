@@ -274,25 +274,26 @@ Sơ đồ kết nối trực quan giữa bo mạch vi điều khiển **ESP32-S3
 
 ---
 
-## 🚀 Hướng Dẫn Vận Hành (Operating Guide)
+## 🚀 Trải Nghiệm Zero-Click 100% Tự Động (Zero-Touch Automation)
 
-### 1. Cài Đặt Trọn Gói Tự Động Chạy Cùng Windows (Khuyên Dùng)
-Chỉ cần thực hiện một lần duy nhất, hệ thống sẽ tự động hóa hoàn toàn mà không cần mở lại mỗi lần bật máy:
-- Nhấp đúp chuột vào tập tin: `scripts/BAT_TU_DONG_CHAY_NGAM.bat`
-- Hệ thống sẽ kích hoạt tiến trình ngầm tàng hình (0-Touch Background Daemon).
-- Khi bạn mở ETS2 hoặc ATS: Màn hình tự động hiển thị Taplo Kỹ thuật số.
-- Khi bạn tắt game: Màn hình tự động chuyển về Mắt Robot Biểu cảm.
+Hệ thống được thiết kế theo triết lý **Zero-Click (Cắm là chạy - Không cần bấm file .bat - Không cần thao tác thủ công)**:
 
-### 2. Dừng Chế Độ Chạy Tự Động
-- Nhấp đúp chuột vào tập tin: `scripts/TAT_TU_DONG_CHAY_NGAM.bat`
+### 1. Cơ Chế Hoạt Động Tự Động Toàn Diện
+- **Cắm Cáp USB:** Chỉ cần cắm cáp Type-C nối ESP32-S3 với máy tính. Thiết bị tự động khởi động và hiển thị biểu cảm mắt robot để bàn (Desktop Pet RoboEyes).
+- **Tự Khởi Động Cùng Windows:** Daemon đồng hành (`tools/miu_desktop_ets2.py`) tự động chạy ngầm tàng hình cùng Windows qua Registry Run / Startup. Tự động quét và kết nối với cổng COM của robot ở tốc độ cao 460800 Baud mà không hiện bất kỳ cửa sổ nào làm phiền người dùng.
+- **Khi Bật Game (ETS2 / ATS / TruckersMP Multiplayer):** Tiến trình ngầm tự động nhận diện dữ liệu lái xe qua `Windows Shared Memory` trực tiếp, lập tức hiển thị màn hình chào Scania 98% và chuyển sang Cockpit Taplo HUD với tần số quét 30 FPS mượt mà.
+- **Khi Thoát Game:** Tiến trình tự động phát hiện game đã tắt và ra lệnh cho màn hình OLED chuyển ngay về biểu cảm Mắt Robot RoboEyes, duy trì kết nối sẵn sàng cho lần chơi tiếp theo.
 
-### 3. Vận Hành Thủ Công Có Bảng Điều Khiển
-- Nhấp đúp chuột vào tập tin: `scripts/CHAY_DASHBOARD_ETS2.bat`
-- Màn hình Console sẽ hiển thị dòng trạng thái đo đạc thời gian thực.
-
-### 4. Kiểm Thử Trực Quan Không Cần Mở Game
-- Nhấp đúp chuột vào tập tin: `scripts/CHAY_DEMO_THU_NGHIEM.bat`
-- Bộ phát dữ liệu mô phỏng sẽ phát luồng dữ liệu 30 FPS để kiểm tra tất cả biểu tượng và thanh đo trên màn hình OLED.
+### 2. Quản Lý Tự Động Hóa (Tùy Chọn)
+Hệ thống đã tự động kích hoạt vĩnh viễn trong Windows. Nếu muốn thiết lập lại hoặc gỡ bỏ:
+- **Cài đặt / Kích hoạt lại tự khởi động ngầm:**
+  ```powershell
+  python tools/setup_autostart.py --install
+  ```
+- **Hủy tự khởi động cùng Windows:**
+  ```powershell
+  python tools/setup_autostart.py --remove
+  ```
 
 ---
 
@@ -313,20 +314,20 @@ Dự án cung cấp máy chủ chuẩn **Model Context Protocol (MCP)** tại `t
 
 ```
 E:\MIU_EILIK_ESP32-S3\
-├── API-ETS2\                     ← Bộ máy chủ Telemetry Server & Thư viện liên kết game
-│   └── server\                   ← Các tệp thực thi Ets2Telemetry.exe và thư viện kết nối
 ├── miu_eilik\                    ← Mã nguồn C++ Firmware nhúng trên ESP32-S3
 │   ├── miu_eilik.ino             ← Điểm khởi chạy hệ thống & bộ điều phối FreeRTOS 2 nhân
 │   ├── display_controller.cpp    ← Bộ dựng đồ họa Taplo ETS2, Fonts chữ to và Icons
 │   ├── usb_protocol.cpp          ← Bộ giải mã gói tin dữ liệu tốc độ cao 460800 baud
 │   └── emoji_controller.cpp      ← Bộ điều khiển diễn hoạt mắt robot biểu cảm
-├── tools\                        ← Phân hệ phần mềm cầu nối máy tính & Cổng AI MCP
+├── tools\                        ← Phân hệ phần mềm cầu nối máy tính & Cổng AI MCP (Zero-Touch)
 │   ├── miu_desktop_ets2.py       ← Daemon cầu nối đọc Shared Memory và truyền qua Serial
 │   ├── esp32_mcp_server.py       ← Máy chủ chuẩn MCP dành cho các trợ lý AI IDE
+│   ├── setup_autostart.py        ← Bộ cấu hình Registry khởi động ngầm cùng Windows
 │   └── mock_telemetry.json       ← Tệp dữ liệu mô phỏng kiểm thử độc lập
-├── scripts\                      ← Bộ kịch bản thao tác nhanh cho hệ điều hành Windows
 ├── docs\                         ← Tài liệu kiến trúc và kế hoạch phát triển hệ thống
+│   └── images\                   ← Hình ảnh hoạt động thực tế trên phần cứng
 ├── platformio.ini                ← Tệp cấu hình biên dịch nhúng PlatformIO
+├── partitions_16mb.csv           ← Phân vùng bộ nhớ Flash tốc độ cao
 └── README.md                     ← Tài liệu hướng dẫn kỹ thuật toàn diện
 ```
 

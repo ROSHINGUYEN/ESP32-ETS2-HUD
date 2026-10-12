@@ -116,6 +116,7 @@ void Ets2Client::update() {
 
       t.blinkerL = doc["truck"]["blinkerLeftActive"] | false;
       t.blinkerR = doc["truck"]["blinkerRightActive"] | false;
+      t.hazard = (t.blinkerL && t.blinkerR);
       t.lightsBeamLow = doc["truck"]["lightsBeamLowOn"] | false;
       t.lightsBeamHigh = doc["truck"]["lightsBeamHighOn"] | false;
       t.parkBrake = doc["truck"]["parkBrakeOn"] | false;
