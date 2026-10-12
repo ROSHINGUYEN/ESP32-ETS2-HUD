@@ -16,18 +16,16 @@
 
 ## 📸 3 Chế Độ Hoạt Động Thông Minh Trong Thực Tế (Smart Real-World Modes)
 
-Dựa trên hình ảnh hoạt động thực tế trên phần cứng **ESP32-S3 (N16R8) + Màn hình OLED 0.96" + Vỏ bảo vệ M39**, hệ thống tự động nhận diện và chuyển đổi mượt mà qua 3 chế độ:
+Dưới đây là hình ảnh chụp hoạt động thực tế 100% trên phần cứng **ESP32-S3 (N16R8) + Màn hình OLED 0.96" + Vỏ bảo vệ M39**, hệ thống tự động nhận diện và chuyển đổi thông minh qua 3 chế độ:
 
-```
-┌───────────────────────────┐      ┌───────────────────────────┐      ┌───────────────────────────┐
-│     CHẾ ĐỘ 1: DESKTOP PET │      │    CHẾ ĐỘ 2: INTRO LOAD   │      │    CHẾ ĐỘ 3: COCKPIT HUD  │
-│                           │      │                           │      │                           │
-│     ┌───────┐ ┌───────┐   │ ──►  │    SCANIA TRUCK - ETS2    │ ──►  │  18:14              [ R ] │
-│     │ ■■■■■ │ │ ■■■■■ │   │      │    [Xe Scania Container]  │      │              2            │
-│     │ ■■■■■ │ │ ■■■■■ │   │      │    SAN SANG LAI XE 98%    │      │         ─── km/h ───      │
-│     └───────┘ └───────┘   │      │    [■■■■■■■■■■■■■■■■□□]   │      │  F:100% 996L  T:0%  C:--% │
-└───────────────────────────┘      └───────────────────────────┘      └───────────────────────────┘
-```
+| **Chế Độ 1: Mắt Robot Để Bàn (Desktop Pet)** | **Chế Độ 2: Màn Hình Tải Map (ETS2 Loading)** | **Chế Độ 3: Đồng Hồ Xe Buồng Lái (Cockpit)** |
+|:---:|:---:|:---:|
+| <img src="docs/images/mode1_roboeyes_pet.png" width="300" alt="Chế Độ 1: RoboEyes Desktop Pet"> | <img src="docs/images/mode2_ets2_loading.jpg" width="300" alt="Chế Độ 2: Intro Loading ETS2 Scania"> | <img src="docs/images/mode3_cockpit_dashboard.png" width="300" alt="Chế Độ 3: Digital Cockpit Dashboard"> |
+| **Khi Rảnh (Không Chạy Game)**<br>Biến thành thú cưng để bàn, tự chớp mắt và đổi biểu cảm vui/tò mò | **Khi Vào Game Đang Tải (Loading)**<br>Xe Scania Container + thanh tiến trình 0–100% (*SAN SANG LAI XE 98%*) | **Khi Vào Buồng Lái Lái Xe**<br>Vận tốc to nét (`2 km/h`), Hộp số (`R`), Giờ (`18:14`), Xăng (`100% 996L`) |
+
+---
+
+### Chi Tiết Hoạt Động Từng Chế Độ
 
 1. **Chế Độ 1 — Thú Cưng Để Bàn Mắt Robot (RoboEyes Desktop Pet)**:
    - **Thời điểm kích hoạt**: Khi bạn đang làm việc bình thường trên Windows và **chưa bật game**.
