@@ -48,6 +48,7 @@ void taskDisplay(void*) {
 // =====================================================================================
 
 void processSerialLine(String line) {
+  display.notifyPresence();
   line.trim();
   if (line.length() == 0) return;
 
@@ -98,6 +99,10 @@ void processSerialLine(String line) {
     display.gameTelem.loading = false;
     display.gameTelem.connected = false;
     display.ets2SplashUntilMs = 0;
+    roboEyes.setWidth(36, 36);
+    roboEyes.setHeight(36, 36);
+    roboEyes.open();
+    roboEyes.setMood(MOOD_DEFAULT);
     LOG_PRINTLN(F("[MODE] Da chuyen sang RoboEyes"));
   } else if (line == "MODE=CLOCK" || line == "mode=clock" || line == "clock") {
     display.mode = DISP_CLOCK;

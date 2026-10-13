@@ -39,6 +39,61 @@ Dưới đây là hình ảnh chụp hoạt động thực tế 100% trên phầ
 
 ---
 
+## 🤖 Hệ Thống 24 Biểu Cảm Mắt Robot Để Bàn (RoboEyes Desktop Pet AI)
+
+Khi máy tính chưa bật game Euro Truck Simulator 2, thiết bị tự động chuyển đổi thành **Thú Cưng Để Bàn Thông Minh (Desktop Companion)** với đôi mắt robot OLED sinh động, biểu cảm phong phú và khả năng phản hồi tương tác theo thời gian thực:
+
+### 1. Bảng Tra Cứu 24 Biểu Cảm Chi Tiết (Full Expression Catalog)
+
+| STT | Biểu Cảm | Lệnh Serial | Mô Tả Diễn Hoạt Mắt Trên OLED (Visual Behavior) |
+|:---:|---|---|---|
+| **1** | `HAPPY` | `happy` / `laugh` | Mắt cười híp cong lưỡi liềm (`^ ^`), nhấp nhô rung rinh cười vui rồi chớp mắt rạng rỡ |
+| **2** | `WINK` | `wink` | Mắt trái mở cười, mắt phải nháy một bên tinh nghịch |
+| **3** | `SURPRISE` | `surprise` | Mắt mở to tròn xoe phóng đại (42x42px), bo tròn góc ngơ ngác bất ngờ |
+| **4** | `CURIOUS` | `curious` | Mắt to mắt nhỏ bất đối xứng, liếc sang trái rồi liếc sang phải tò mò nhìn ngắm |
+| **5** | `CONFUSED` | `confused` | Mắt lắc lư bối rối trái/phải kèm giọt mồ hôi rơi trên trán |
+| **6** | `EXCITED` | `excited` | Mắt mở to ngước nhìn lên cao, rung rinh cười to rạng rỡ |
+| **7** | `THINKING` | `thinking` | Nheo mắt liếc lên góc trên suy nghĩ, đăm chiêu tính toán |
+| **8** | `ANGER` | `anger` / `angry` | Mí mắt xếch chéo hình tam giác giận dữ, quắc mắt hờn dỗi đáng yêu |
+| **9** | `LOVING` | `love` / `loving` | Mắt cười híp tít, chớp mắt kép âu yếm gửi trọn yêu thương |
+| **10** | `HEAD_ROLL` | `roll` / `head_roll` | Đồng tử đảo mắt một vòng tròn 360° linh hoạt theo chiều kim đồng hồ |
+| **11** | `STRETCH` | `stretch` | Vươn vai thư giãn: đảo mắt qua lại rồi chớp mắt định thần |
+| **12** | `SHY` | `shy` | Mắt nhìn cụp xuống dưới, bẽn lẽn ngượng ngùng |
+| **13** | `WINK_LEFT` | `wink_left` | Mắt phải mở cười, mắt trái nháy một bên tinh nghịch ngược lại |
+| **14** | `DIZZY` | `dizzy` | Mắt chóng mặt quay cuồng, rung lắc đa hướng rồi toét mắt mệt mỏi |
+| **15** | `HEART_PULSE` | `heart` / `pulse` | Trái tim đập phập phồng: mắt co giãn phóng to/thu nhỏ 3 nhịp liên tục theo nhịp tim |
+| **16** | `SKEPTICAL` | `skeptical` | Bán tín bán nghi: một bên mắt nheo nhỏ, một bên mở to nhìn liếc xéo nghi ngờ |
+| **17** | `SNEAKY` | `sneaky` | Lén lút / rình rập: nheo mắt lủi xuống đáy màn hình, ngó nghiêng rồi nhô lên nhìn trộm |
+| **18** | `BORED` | `bored` | Chán nản ngao ngán: đảo mắt lên trần nhà thở dài một hơi rồi cụp xuống |
+| **19** | `SMUG` | `smug` | Tự đắc / đắc thắng: nhìn xếch lên cười khẩy rồi nháy mắt tự mãn |
+| **20** | `PANIC` | `panic` | Hoảng loạn cực độ: mắt rung lắc bần bật toàn màn hình, mồ hôi vã liên tục |
+| **21** | `SLEEPY_NOD` | `nod` / `sleepy` | Gật gù ngủ gật: cụp mí mắt ngủ quên rồi giật mình mở to mắt bừng tỉnh |
+| **22** | `DANCE` | `dance` | Nhảy múa lắc lư: nhún nhảy nhịp nhàng 4 hướng (Trái-Lên-Phải-Xuống) và cười toe |
+| **23** | `RADAR` | `radar` | Quét radar khoa học viễn tưởng (Sci-Fi): mắt dẹt ngang quét từ Tây sang Đông |
+| **24** | `YAWN` | `yawn` | Ngáp dài ngái ngủ: mắt trợn to ngước nhìn lên cao, rung rinh rồi từ từ nhắm tịt ngáp dài |
+
+---
+
+### 2. Chu Trình Tự Hành Thông Minh (Lively Desktop Pet AI Engine)
+
+- **Chu kỳ tự diễn hoạt 5.0 giây:** Ở chế độ chờ, robot tự động luân phiên biểu diễn 24 biểu cảm sống động theo vòng tuần hoàn. Không còn cảm giác màn hình tĩnh hay chỉ chớp mắt đơn điệu.
+- **Tâm trạng (Mood) thích ứng theo thời gian thực (RTC Synchronized):**
+  - **06:00 – 10:00 (Sáng sớm):** `MOOD_HAPPY` — Khởi đầu ngày mới tươi vui, mắt cười rạng rỡ.
+  - **10:00 – 18:00 (Ban ngày):** `MOOD_DEFAULT` — Năng động, làm việc trung tính, tự do khám phá.
+  - **18:00 – 22:00 (Buổi tối):** `MOOD_DEFAULT` / `CONFUSED` — Trầm tĩnh, chuẩn bị thư giãn.
+  - **22:00 – 06:00 (Đêm khuya):** `MOOD_TIRED` — Mí mắt cụp lim dim buồn ngủ theo nhịp sinh học.
+
+---
+
+### 3. Cơ Chế Idle Sleep & Tự Động Đánh Thức Tức Thì (Auto Wake-Up)
+
+- **Tiết kiệm màn hình OLED (OLED Burn-In Protection):** Nếu không có bất kỳ tương tác nào trong vòng **5 phút**, robot sẽ tự động chuyển sang trạng thái ngủ sâu (`SLEEP`) để bảo vệ tấm nền hữu cơ OLED SSD1306 và tiết kiệm năng lượng.
+- **Tự động thức giấc (Instant Serial Wake-Up):**
+  - Chỉ cần bạn **bấm một phím bất kỳ**, gửi bất kỳ lệnh nào qua cổng COM (Serial Monitor, Companion App, Python, MCP Server), hoặc bật game ETS2 lái xe.
+  - Hệ thống ngay lập tức kích hoạt `display.notifyPresence()`, đánh thức robot dậy (`WAKEUP` -> mở to mắt, chớp mắt tươi tắn hoặc vươn vai chào bạn) mà không cần thao tác khởi động lại bo mạch!
+
+---
+
 ## 📸 Thiết Kế Giao Diện Buồng Lái Chi Tiết (Digital Cockpit Layout)
 
 Màn hình OLED 128x64 được thiết kế theo tỷ lệ phân chia 3 cột công thái học (Ergonomic 3-Column Layout), tối ưu hóa góc nhìn của tài xế khi gắn trên Vô-lăng hoặc Sim Rig:
@@ -307,6 +362,32 @@ Dự án cung cấp máy chủ chuẩn **Model Context Protocol (MCP)** tại `t
 - `esp32_get_logs`: Trích xuất nhật ký hành trình, sự kiện phạt tiền, trạm thu phí và va chạm giao thông.
 - `esp32_send_command`: Ra lệnh chuyển đổi trạng thái hiển thị trên thiết bị (`GAME`, `EYES`, `CLOCK`, `OFF`).
 - `esp32_trigger_event`: Bắn thông báo tùy biến tức thời lên màn hình OLED của buồng lái.
+
+---
+
+## 🛠️ Hướng Dẫn Biên Dịch & Nạp Firmware (Build & Flash Firmware)
+
+Dự án được cấu hình sẵn cho **PlatformIO CLI** và **VS Code PlatformIO IDE**:
+
+### 1. Biên Dịch Firmware
+```bash
+pio run -e eilik_s3
+```
+- Bo mạch mục tiêu: `ESP32-S3-DevKitC-1-N8` (hoặc N16R8).
+- Bộ nhớ tối ưu Zero-Allocation: RAM ~8.7% (28KB / 320KB), Flash ~8.5% (400KB / 4.7MB).
+
+### 2. Nạp Firmware Lên Bo Mạch (Upload qua Cổng COM)
+```bash
+# Nạp tự động qua cổng chỉ định (ví dụ COM5):
+pio run -e eilik_s3 -t upload --upload-port COM5
+```
+*(Lưu ý: Nếu daemon ngầm `tools/miu_desktop_ets2.py` đang chạy, hãy tạm dừng tiến trình để giải phóng cổng COM trước khi nạp).*
+
+### 3. Điều Khiển Thử Nghiệm Qua Serial (Serial CLI Testing)
+Kết nối với bo mạch ở tốc độ baud **460800** (8N1) qua Serial Monitor hoặc Serial Terminal bất kỳ:
+- **Chuyển chế độ:** `MODE=EYES`, `MODE=GAME`, `MODE=CLOCK`
+- **Biểu cảm mắt:** `happy`, `wink`, `surprise`, `dance`, `panic`, `heart`, `radar`, `sleepy`, `yawn`...
+- **Cơ chế đánh thức tự động:** Bất kỳ tín hiệu/lệnh nào gửi qua Serial cũng sẽ tự động đánh thức robot dậy (`WAKEUP` -> mở to mắt) nếu robot đang ngủ.
 
 ---
 
